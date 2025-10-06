@@ -50,6 +50,7 @@ func (m *Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.updateColumnWidths()
 	case messages.InputFileLoaded:
 		log.Debugf("Received InputFileLoaded message with %d entries.", len(msg.Content))
 
@@ -67,7 +68,7 @@ func (m *Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 					if i >= 5 {
 						break
 					}
-					columns = append(columns, table.Column{Title: k, Width: (m.width - 16) / 5})
+					columns = append(columns, table.Column{Title: k, Width: 10})
 					i++
 				}
 
@@ -92,6 +93,7 @@ func (m *Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 				m.table.SetColumns(columns)
 				m.table.SetRows(rows)
+				m.updateColumnWidths()
 			} else {
 				log.Warn("First entry is not a map[string]interface{}")
 			}
@@ -108,6 +110,83 @@ func (m *Model) View() string {
 	t.SetHeight(m.height - 4)
 
 	return t.View()
+}
+
+func (m *Model) updateColumnWidths() {
+	if m.width == 0 || len(m.table.Rows()) == 0 {
+		return
+	}
+
+	columns := m.table.Columns()
+	rows := m.table.Rows()
+	numColumns := len(columns)
+	if numColumns == 0 {
+		return
+	}
+
+	// Calculate ideal widths
+	idealWidths := make([]int, numColumns)
+	for i, col := range columns {
+		idealWidths[i] = len(col.Title)
+	}
+
+	for _, row := range rows {
+		for i, cell := range row {
+			if i < numColumns {
+				if len(cell) > idealWidths[i] {
+					idealWidths[i] = len(cell)
+				}
+			}
+		}
+	}
+
+	totalIdealWidth := 0
+	for _, w := range idealWidths {
+		totalIdealWidth += w
+	}
+
+	// availableWidth := m.width - (numColumns * 3) - 2 // Adjust for padding/borders
+	availableWidth := m.width - 16 // Adjust for padding/borders
+
+	if totalIdealWidth >= availableWidth {
+		// Shrink columns proportionally
+		for i := range columns {
+			columns[i].Width = (idealWidths[i] * availableWidth) / totalIdealWidth
+		}
+	} else {
+		// Grow columns, distribute extra space
+		extraSpace := availableWidth - totalIdealWidth
+		growableColumns := 0
+		for _, w := range idealWidths {
+			if w > 0 { // Only consider columns with content
+				growableColumns++
+			}
+		}
+
+		if growableColumns > 0 {
+			extraPerColumn := extraSpace / growableColumns
+			for i := range columns {
+				columns[i].Width = idealWidths[i]
+				if idealWidths[i] > 0 {
+					columns[i].Width += extraPerColumn
+				}
+			}
+			// Distribute remainder
+			remainder := extraSpace % growableColumns
+			for i := 0; i < remainder; i++ {
+				if i < len(columns) {
+					columns[i].Width++
+				}
+			}
+		} else {
+			// Fallback if no growable columns
+			for i := range columns {
+				columns[i].Width = availableWidth / numColumns
+			}
+		}
+	}
+
+	m.table.SetColumns(columns)
 }
 
 func discoverInitialColumnQueries(first map[string]interface{}) []string {
