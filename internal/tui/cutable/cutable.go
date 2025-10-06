@@ -106,10 +106,11 @@ func (m *Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 }
 
 func (m *Model) View() string {
-	t := m.table
-	t.SetHeight(m.height - 4)
+	return m.table.View()
+}
 
-	return t.View()
+func (m *Model) SetHeight(height int) {
+	m.table.SetHeight(height)
 }
 
 func (m *Model) updateColumnWidths() {
