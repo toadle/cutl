@@ -4,11 +4,13 @@ import (
 	"cutl/internal/messages"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/log"
+	"github.com/itchyny/gojq"
 )
 
 type Model struct {
@@ -65,28 +67,41 @@ func (m *Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 func (m *Model) rebuildTable() {
 	var columns []table.Column
-	for _, k := range m.columnQueries {
-		columns = append(columns, table.Column{Title: k, Width: 10})
+	for _, q := range m.columnQueries {
+		columns = append(columns, table.Column{Title: q, Width: 10})
 	}
 
 	var rows []table.Row
 	for _, item := range m.rawData {
-		if obj, ok := item.(map[string]interface{}); ok {
-			var row []string
-			for _, col := range columns {
-				val := ""
-				if v, ok := obj[col.Title]; ok {
-					switch v := v.(type) {
-					case float64:
-						val = fmt.Sprintf("%.0f", v)
-					default:
-						val = fmt.Sprintf("%v", v)
-					}
-				}
-				row = append(row, val)
+		var row []string
+		for _, col := range columns {
+			query, err := gojq.Parse(col.Title)
+			if err != nil {
+				log.Errorf("Error parsing jq query '%s': %v", col.Title, err)
+				row = append(row, "ERR:PARSE")
+				continue
 			}
-			rows = append(rows, table.Row(row))
+
+			iter := query.Run(item) // or query.RunWithContext(context.Background(), item)
+			val := ""
+			v, ok := iter.Next()
+			if !ok {
+				// No value found
+				val = ""
+			} else if err, ok := v.(error); ok {
+				log.Errorf("Error executing jq query '%s': %v", col.Title, err)
+				val = "ERR:EXEC"
+			} else {
+				switch v := v.(type) {
+				case float64:
+					val = fmt.Sprintf("%.0f", v)
+				default:
+					val = fmt.Sprintf("%v", v)
+				}
+			}
+			row = append(row, val)
 		}
+		rows = append(rows, table.Row(row))
 	}
 
 	h := m.table.Height()
@@ -211,7 +226,7 @@ func discoverInitialColumnQueries(first map[string]interface{}) []string {
 	var keys []string
 	for k := range first {
 		if len(k) > 0 && k[0] != '_' {
-			keys = append(keys, k)
+			keys = append(keys, "."+k)
 		}
 	}
 
@@ -220,22 +235,22 @@ func discoverInitialColumnQueries(first map[string]interface{}) []string {
 		a := keys[i]
 		b := keys[j]
 
+		// Extract last part of the query for priority sorting
+		aName := a[strings.LastIndex(a, ".")+1:]
+		bName := b[strings.LastIndex(b, ".")+1:]
+
 		aPrio := 2
 		bPrio := 2
 
-		if a == "id" {
+		if aName == "id" {
 			aPrio = 0
-		} else if a == "title" {
-			aPrio = 1
-		} else if a == "text" {
+		} else if aName == "title" || aName == "text" {
 			aPrio = 1
 		}
 
-		if b == "id" {
+		if bName == "id" {
 			bPrio = 0
-		} else if b == "title" {
-			bPrio = 1
-		} else if b == "text" {
+		} else if bName == "title" || bName == "text" {
 			bPrio = 1
 		}
 
