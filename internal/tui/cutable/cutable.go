@@ -203,6 +203,19 @@ func (m *Model) SelectedOriginalLine() int {
 	return m.filteredEntries[cursor].Line
 }
 
+func (m *Model) SelectedEntry() *editor.Entry {
+	if len(m.filteredEntries) == 0 {
+		return nil
+	}
+
+	cursor := m.table.Cursor()
+	if cursor < 0 || cursor >= len(m.filteredEntries) {
+		return nil
+	}
+
+	return &m.filteredEntries[cursor]
+}
+
 func (m *Model) SetHeight(height int) {
 	m.table.SetHeight(height)
 }
