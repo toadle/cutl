@@ -6,15 +6,24 @@ import (
 	"cutl/internal/tui/commandpanel"
 	"cutl/internal/tui/cutable"
 	"cutl/internal/tui/styles"
+	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/log"
 )
 
+type viewState int
+
+const (
+	tableView viewState = iota
+	columnInputView
+)
+
 type Model struct {
 	width  int
 	height int
+	state  viewState
 
 	jsonlPath    string
 	table        cutable.Model
@@ -26,6 +35,7 @@ func New(jsonlPath string) *Model {
 		table:        cutable.New(),
 		commandPanel: commandpanel.New(),
 		jsonlPath:    jsonlPath,
+		state:        tableView,
 	}
 
 	return m
@@ -55,10 +65,38 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		switch msg.Type {
-		case tea.KeyCtrlC:
-			return m, tea.Quit
+		switch m.state {
+		case tableView:
+			switch msg.String() {
+			case "c":
+				m.state = columnInputView
+				m.commandPanel.Activate(m.table.ColumnQueries())
+				return m, nil
+			case "ctrl+c", "q":
+				return m, tea.Quit
+			}
+		case columnInputView:
+			switch msg.String() {
+			case "esc":
+				m.state = tableView
+				m.commandPanel.Deactivate()
+			case "enter":
+				m.state = tableView
+				m.commandPanel.Deactivate()
+				rawQueries := m.commandPanel.Value()
+				queries := strings.Split(rawQueries, ",")
+				for i, q := range queries {
+					queries[i] = strings.TrimSpace(q)
+				}
+
+				return m, func() tea.Msg {
+					return messages.ColumnQueryChanged{
+						Queries: queries,
+					}
+				}
+			}
 		}
+
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height

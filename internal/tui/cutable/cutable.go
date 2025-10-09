@@ -12,10 +12,11 @@ import (
 )
 
 type Model struct {
-	height         int
+	height        int
 	width         int
 	table         table.Model
 	columnQueries []string
+	rawData       []any
 }
 
 func (m *Model) Init() tea.Cmd {
@@ -23,24 +24,15 @@ func (m *Model) Init() tea.Cmd {
 }
 
 func New() Model {
+	t := table.New(
+		table.WithFocused(true),
+	)
+	t.SetStyles(defaultStyles())
+
 	m := Model{
-		table: table.New(
-			table.WithFocused(true),
-		),
+		table:         t,
 		columnQueries: []string{}, // Initialisiere leeres Array
 	}
-
-	s := table.DefaultStyles()
-	s.Header = s.Header.
-		BorderStyle(lipgloss.NormalBorder()).
-		BorderForeground(lipgloss.Color("240")).
-		BorderBottom(true).
-		Bold(false)
-	s.Selected = s.Selected.
-		Foreground(lipgloss.Color("229")).
-		Background(lipgloss.Color("57")).
-		Bold(false)
-	m.table.SetStyles(s)
 
 	return m
 }
@@ -51,53 +43,19 @@ func (m *Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		m.updateColumnWidths()
+	case messages.ColumnQueryChanged:
+		m.columnQueries = msg.Queries
+		m.rebuildTable()
 	case messages.InputFileLoaded:
 		log.Debugf("Received InputFileLoaded message with %d entries.", len(msg.Content))
+		m.rawData = msg.Content
 
-		var columns []table.Column
-		var rows []table.Row
-
-		if len(msg.Content) > 0 {
-			if len(m.columnQueries) == 0 {
-				if first, ok := msg.Content[0].(map[string]interface{}); ok {
-					m.columnQueries = discoverInitialColumnQueries(first)
-				}
-
-				i := 0
-				for _, k := range m.columnQueries {
-					if i >= 5 {
-						break
-					}
-					columns = append(columns, table.Column{Title: k, Width: 10})
-					i++
-				}
-
-				for _, item := range msg.Content {
-					if obj, ok := item.(map[string]interface{}); ok {
-						var row []string
-						for _, col := range columns {
-							val := ""
-							if v, ok := obj[col.Title]; ok {
-								switch v := v.(type) {
-								case float64:
-									val = fmt.Sprintf("%.0f", v) // Formatierung als ganze Zahl
-								default:
-									val = fmt.Sprintf("%v", v)   // Konvertiere Wert zu String
-								}
-							}
-							row = append(row, val)
-						}
-						rows = append(rows, table.Row(row))
-					}
-				}
-
-				m.table.SetColumns(columns)
-				m.table.SetRows(rows)
-				m.updateColumnWidths()
-			} else {
-				log.Warn("First entry is not a map[string]interface{}")
+		if len(m.columnQueries) == 0 {
+			if first, ok := m.rawData[0].(map[string]interface{}); ok {
+				m.columnQueries = discoverInitialColumnQueries(first)
 			}
 		}
+		m.rebuildTable()
 	}
 
 	m.table, msg = m.table.Update(msg)
@@ -105,8 +63,67 @@ func (m *Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	return *m, nil
 }
 
+func (m *Model) rebuildTable() {
+	var columns []table.Column
+	for _, k := range m.columnQueries {
+		columns = append(columns, table.Column{Title: k, Width: 10})
+	}
+
+	var rows []table.Row
+	for _, item := range m.rawData {
+		if obj, ok := item.(map[string]interface{}); ok {
+			var row []string
+			for _, col := range columns {
+				val := ""
+				if v, ok := obj[col.Title]; ok {
+					switch v := v.(type) {
+					case float64:
+						val = fmt.Sprintf("%.0f", v)
+					default:
+						val = fmt.Sprintf("%v", v)
+					}
+				}
+				row = append(row, val)
+			}
+			rows = append(rows, table.Row(row))
+		}
+	}
+
+	h := m.table.Height()
+
+	// Create a new table model
+	newTable := table.New(
+		table.WithColumns(columns),
+		table.WithRows(rows),
+		table.WithFocused(true),
+		table.WithHeight(h),
+	)
+
+	newTable.SetStyles(defaultStyles())
+	m.table = newTable
+	m.updateColumnWidths()
+}
+
+func defaultStyles() table.Styles {
+	s := table.DefaultStyles()
+	s.Header = s.Header.
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderForeground(lipgloss.Color("240")).
+		BorderBottom(true).
+		Bold(false)
+	s.Selected = s.Selected.
+		Foreground(lipgloss.Color("229")).
+		Background(lipgloss.Color("57")).
+		Bold(false)
+	return s
+}
+
 func (m *Model) View() string {
 	return m.table.View()
+}
+
+func (m *Model) ColumnQueries() []string {
+	return m.columnQueries
 }
 
 func (m *Model) SetHeight(height int) {
@@ -228,5 +245,9 @@ func discoverInitialColumnQueries(first map[string]interface{}) []string {
 
 		return a < b
 	})
+
+	if len(keys) > 5 {
+		return keys[:5]
+	}
 	return keys
 }
