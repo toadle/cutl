@@ -18,6 +18,7 @@ type Model struct {
 	width         int
 	table         table.Model
 	columnQueries []string
+	filterQuery   string
 	rawData       []any
 }
 
@@ -48,6 +49,9 @@ func (m *Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	case messages.ColumnQueryChanged:
 		m.columnQueries = msg.Queries
 		m.rebuildTable()
+	case messages.FilterQueryChanged:
+		m.filterQuery = msg.Query
+		m.rebuildTable()
 	case messages.InputFileLoaded:
 		log.Debugf("Received InputFileLoaded message with %d entries.", len(msg.Content))
 		m.rawData = msg.Content
@@ -71,8 +75,34 @@ func (m *Model) rebuildTable() {
 		columns = append(columns, table.Column{Title: q, Width: 10})
 	}
 
+	filteredData := m.rawData
+	if m.filterQuery != "" {
+		// Construct the full query: [.[] | select(<user_query>)]
+		queryStr := fmt.Sprintf("[.[] | select(%s)]", m.filterQuery)
+		query, err := gojq.Parse(queryStr)
+		if err != nil {
+			log.Errorf("Error parsing constructed filter query '%s': %v", queryStr, err)
+			// Bei einem Fehler in der Abfrage werden alle Daten angezeigt, um eine leere Tabelle zu vermeiden
+		} else {
+			iter := query.Run(m.rawData)
+			v, ok := iter.Next()
+			if !ok {
+				// Sollte nicht passieren, wenn die Abfrage korrekt ist, aber wir behandeln es.
+				filteredData = []any{}
+			} else if err, ok := v.(error); ok {
+				log.Errorf("Error executing filter query '%s': %v", queryStr, err)
+				// Bei einem Ausführungsfehler werden alle Daten angezeigt
+			} else if result, ok := v.([]any); ok {
+				filteredData = result
+			} else {
+				log.Errorf("Filter query did not return an array as expected.")
+				// Das Ergebnis ist kein Array, also werden alle Daten angezeigt
+			}
+		}
+	}
+
 	var rows []table.Row
-	for _, item := range m.rawData {
+	for _, item := range filteredData {
 		var row []string
 		for _, col := range columns {
 			query, err := gojq.Parse(col.Title)
@@ -139,6 +169,10 @@ func (m *Model) View() string {
 
 func (m *Model) ColumnQueries() []string {
 	return m.columnQueries
+}
+
+func (m *Model) FilterQuery() string {
+	return m.filterQuery
 }
 
 func (m *Model) SetHeight(height int) {

@@ -18,6 +18,7 @@ type viewState int
 const (
 	tableView viewState = iota
 	columnInputView
+	filterInputView
 )
 
 type Model struct {
@@ -72,6 +73,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.state = columnInputView
 				m.commandPanel.Activate(m.table.ColumnQueries())
 				return m, nil
+			case "f":
+				m.state = filterInputView
+				m.commandPanel.Activate([]string{m.table.FilterQuery()})
+				return m, nil
 			case "ctrl+c", "q":
 				return m, tea.Quit
 			}
@@ -92,6 +97,26 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, func() tea.Msg {
 					return messages.ColumnQueryChanged{
 						Queries: queries,
+					}
+				}
+			}
+		case filterInputView:
+			switch msg.String() {
+			case "esc":
+				m.state = tableView
+				m.commandPanel.Deactivate()
+			case "enter":
+				m.state = tableView
+				m.commandPanel.Deactivate()
+				rawQuery := m.commandPanel.Value()
+
+				// Sanitize input
+				sanitizedQuery := strings.ReplaceAll(rawQuery, " ", " ")   // non-breaking space
+				sanitizedQuery = strings.ReplaceAll(sanitizedQuery, "'", "\"") // single to double quotes
+
+				return m, func() tea.Msg {
+					return messages.FilterQueryChanged{
+						Query: sanitizedQuery,
 					}
 				}
 			}
