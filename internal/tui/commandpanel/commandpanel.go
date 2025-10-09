@@ -18,6 +18,7 @@ type Model struct {
 	filteredRows int
 	currentLine  int
 	filterActive bool
+	markedCount  int
 }
 
 func (m *Model) Init() tea.Cmd {
@@ -52,10 +53,11 @@ func (m *Model) Value() string {
 	return m.textInput.Value()
 }
 
-func (m *Model) SetMeta(totalRows, filteredRows, currentLine int, filterActive bool) {
+func (m *Model) SetMeta(totalRows, filteredRows, currentLine, markedCount int, filterActive bool) {
 	m.totalRows = totalRows
 	m.filteredRows = filteredRows
 	m.currentLine = currentLine
+	m.markedCount = markedCount
 	m.filterActive = filterActive
 }
 
@@ -100,15 +102,16 @@ func (m *Model) metaContent() string {
 
 	base := fmt.Sprintf("%s / %d", current, m.totalRows)
 
+	details := []string{fmt.Sprintf("%d marked", m.markedCount)}
 	if m.filterActive {
 		filteredOut := m.totalRows - m.filteredRows
 		if filteredOut < 0 {
 			filteredOut = 0
 		}
-		return fmt.Sprintf("%s (%d filtered)", base, filteredOut)
+		details = append([]string{fmt.Sprintf("%d filtered", filteredOut)}, details...)
 	}
 
-	return base
+	return fmt.Sprintf("%s (%s)", base, strings.Join(details, ", "))
 }
 
 func (m *Model) layoutWithMeta(left, meta string) string {

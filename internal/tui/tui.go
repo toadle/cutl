@@ -47,7 +47,6 @@ func New(jsonlPath string) *Model {
 	}
 
 	m.detailViewport = viewport.New(0, 0)
-	m.detailViewport.HighPerformanceRendering = false
 
 	return m
 }
@@ -95,6 +94,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.updateDetailContent(entry, true)
 					return m, nil
 				}
+			case " ":
+				skipTableUpdate = true
+				m.table.ToggleMarkSelected()
 			case "ctrl+c", "q":
 				return m, tea.Quit
 			}
@@ -144,6 +146,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "esc", "d", "D":
 				m.state = tableView
 				return m, nil
+			case " ":
+				m.table.ToggleMarkSelected()
 			case "ctrl+c", "q":
 				return m, tea.Quit
 			}
@@ -175,6 +179,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.table.TotalRows(),
 		m.table.FilteredRows(),
 		m.table.SelectedOriginalLine(),
+		m.table.MarkedCount(),
 		m.table.FilterQuery() != "",
 	)
 

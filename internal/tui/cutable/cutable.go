@@ -22,7 +22,12 @@ type Model struct {
 	filterQuery     string
 	rawEntries      []editor.Entry
 	filteredEntries []editor.Entry
+	marked          map[int]struct{}
 }
+
+const (
+	paddingWidthOffset = 18
+)
 
 func (m *Model) Init() tea.Cmd {
 	return nil
@@ -37,6 +42,7 @@ func New() Model {
 	m := Model{
 		table:         t,
 		columnQueries: []string{}, // Initialisiere leeres Array
+		marked:        make(map[int]struct{}),
 	}
 
 	return m
@@ -72,7 +78,19 @@ func (m *Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 }
 
 func (m *Model) rebuildTable() {
-	var columns []table.Column
+	selectedLine := -1
+	if len(m.filteredEntries) > 0 {
+		if line := m.SelectedOriginalLine(); line > 0 {
+			selectedLine = line
+		}
+	}
+
+	showMarker := len(m.marked) > 0
+
+	columns := make([]table.Column, 0, len(m.columnQueries)+1)
+	if showMarker {
+		columns = append(columns, table.Column{Title: "●", Width: 2})
+	}
 	for _, q := range m.columnQueries {
 		columns = append(columns, table.Column{Title: q, Width: 10})
 	}
@@ -110,13 +128,21 @@ func (m *Model) rebuildTable() {
 		}
 	}
 
-	var rows []table.Row
-	for _, entry := range m.filteredEntries {
-		var row []string
-		for _, col := range columns {
-			query, err := gojq.Parse(col.Title)
+	var (
+		rows      []table.Row
+		cursorPos = -1
+	)
+
+	for idx, entry := range m.filteredEntries {
+		row := make([]string, 0, len(columns))
+		if showMarker {
+			row = append(row, m.markerSymbol(entry.Line))
+		}
+
+		for _, col := range m.columnQueries {
+			query, err := gojq.Parse(col)
 			if err != nil {
-				log.Errorf("Error parsing jq query '%s': %v", col.Title, err)
+				log.Errorf("Error parsing jq query '%s': %v", col, err)
 				row = append(row, "ERR:PARSE")
 				continue
 			}
@@ -127,7 +153,7 @@ func (m *Model) rebuildTable() {
 			if !ok {
 				val = ""
 			} else if execErr, isErr := v.(error); isErr {
-				log.Errorf("Error executing jq query '%s': %v", col.Title, execErr)
+				log.Errorf("Error executing jq query '%s': %v", col, execErr)
 				val = "ERR:EXEC"
 			} else {
 				switch v := v.(type) {
@@ -140,20 +166,32 @@ func (m *Model) rebuildTable() {
 			row = append(row, val)
 		}
 		rows = append(rows, table.Row(row))
+		if selectedLine > 0 && entry.Line == selectedLine {
+			cursorPos = idx
+		}
 	}
 
-	h := m.table.Height()
+	oldColumnCount := len(m.table.Columns())
+	newColumnCount := len(columns)
 
-	newTable := table.New(
-		table.WithColumns(columns),
-		table.WithRows(rows),
-		table.WithFocused(true),
-		table.WithHeight(h),
-	)
-
-	newTable.SetStyles(defaultStyles())
-	m.table = newTable
+	if newColumnCount < oldColumnCount {
+		m.table.SetRows(rows)
+		m.table.SetColumns(columns)
+	} else {
+		m.table.SetColumns(columns)
+		m.table.SetRows(rows)
+	}
+	if cursorPos >= 0 {
+		m.table.SetCursor(cursorPos)
+	}
 	m.updateColumnWidths()
+}
+
+func (m *Model) markerSymbol(line int) string {
+	if _, ok := m.marked[line]; ok {
+		return "●"
+	}
+	return ""
 }
 
 func defaultStyles() table.Styles {
@@ -190,6 +228,10 @@ func (m *Model) FilteredRows() int {
 	return len(m.filteredEntries)
 }
 
+func (m *Model) MarkedCount() int {
+	return len(m.marked)
+}
+
 func (m *Model) SelectedOriginalLine() int {
 	if len(m.filteredEntries) == 0 {
 		return 0
@@ -216,6 +258,26 @@ func (m *Model) SelectedEntry() *editor.Entry {
 	return &m.filteredEntries[cursor]
 }
 
+func (m *Model) ToggleMarkSelected() {
+	cursor := m.table.Cursor()
+	if cursor < 0 || cursor >= len(m.filteredEntries) {
+		return
+	}
+
+	entry := m.filteredEntries[cursor]
+	if m.marked == nil {
+		m.marked = make(map[int]struct{})
+	}
+
+	if _, ok := m.marked[entry.Line]; ok {
+		delete(m.marked, entry.Line)
+	} else {
+		m.marked[entry.Line] = struct{}{}
+	}
+
+	m.rebuildTable()
+}
+
 func (m *Model) SetHeight(height int) {
 	m.table.SetHeight(height)
 }
@@ -232,66 +294,73 @@ func (m *Model) updateColumnWidths() {
 		return
 	}
 
-	// Calculate ideal widths
 	idealWidths := make([]int, numColumns)
-	for i, col := range columns {
-		idealWidths[i] = len(col.Title)
-	}
-
-	for _, row := range rows {
-		for i, cell := range row {
-			if i < numColumns {
-				if len(cell) > idealWidths[i] {
-					idealWidths[i] = len(cell)
+	for colIdx := range columns {
+		width := lipgloss.Width(columns[colIdx].Title)
+		for _, row := range rows {
+			if colIdx < len(row) {
+				cellWidth := lipgloss.Width(row[colIdx])
+				if cellWidth > width {
+					width = cellWidth
 				}
 			}
 		}
+		idealWidths[colIdx] = width
 	}
 
-	totalIdealWidth := 0
+	available := m.width - paddingWidthOffset
+	if available < 0 {
+		available = 0
+	}
+
+	widths := make([]int, numColumns)
+	totalIdeal := 0
 	for _, w := range idealWidths {
-		totalIdealWidth += w
+		totalIdeal += w
 	}
 
-	// availableWidth := m.width - (numColumns * 3) - 2 // Adjust for padding/borders
-	availableWidth := m.width - 18 // Adjust for padding/borders
-
-	if totalIdealWidth >= availableWidth {
-		// Shrink columns proportionally
-		for i := range columns {
-			columns[i].Width = (idealWidths[i] * availableWidth) / totalIdealWidth
+	if totalIdeal == 0 {
+		per := 0
+		remainder := 0
+		if numColumns > 0 {
+			per = available / numColumns
+			remainder = available % numColumns
+		}
+		for i := 0; i < numColumns; i++ {
+			widths[i] = per
+			if remainder > 0 {
+				widths[i]++
+				remainder--
+			}
 		}
 	} else {
-		// Grow columns, distribute extra space
-		extraSpace := availableWidth - totalIdealWidth
-		growableColumns := 0
-		for _, w := range idealWidths {
-			if w > 0 { // Only consider columns with content
-				growableColumns++
-			}
+		remainder := available
+		for i := 0; i < numColumns; i++ {
+			widths[i] = (idealWidths[i] * available) / totalIdeal
+			remainder -= widths[i]
 		}
+		for i := 0; remainder > 0 && i < numColumns; i++ {
+			widths[i]++
+			remainder--
+		}
+	}
 
-		if growableColumns > 0 {
-			extraPerColumn := extraSpace / growableColumns
-			for i := range columns {
-				columns[i].Width = idealWidths[i]
-				if idealWidths[i] > 0 {
-					columns[i].Width += extraPerColumn
-				}
-			}
-			// Distribute remainder
-			remainder := extraSpace % growableColumns
-			for i := 0; i < remainder; i++ {
-				if i < len(columns) {
-					columns[i].Width++
-				}
-			}
-		} else {
-			// Fallback if no growable columns
-			for i := range columns {
-				columns[i].Width = availableWidth / numColumns
+	if len(columns) > 0 && columns[0].Title == "." && len(widths) > 1 {
+		maxIdx := 1
+		for i := 2; i < len(widths); i++ {
+			if widths[i] > widths[maxIdx] {
+				maxIdx = i
 			}
 		}
+		if widths[maxIdx] >= 2 {
+			widths[maxIdx] -= 2
+		} else {
+			widths[maxIdx] = 0
+		}
+	}
+
+	for idx := range columns {
+		columns[idx].Width = widths[idx]
 	}
 
 	m.table.SetColumns(columns)
