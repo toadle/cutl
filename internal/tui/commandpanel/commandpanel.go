@@ -98,14 +98,14 @@ func (m *Model) metaContent() string {
 		current = fmt.Sprintf("%d", m.currentLine)
 	}
 
-	base := fmt.Sprintf("%s / %d Lines", current, m.totalRows)
+	base := fmt.Sprintf("%s / %d", current, m.totalRows)
 
 	if m.filterActive {
 		filteredOut := m.totalRows - m.filteredRows
 		if filteredOut < 0 {
 			filteredOut = 0
 		}
-		return fmt.Sprintf("%s (%d lines filtered)", base, filteredOut)
+		return fmt.Sprintf("%s (%d filtered)", base, filteredOut)
 	}
 
 	return base

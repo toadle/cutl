@@ -241,7 +241,7 @@ func (m *Model) updateColumnWidths() {
 	}
 
 	// availableWidth := m.width - (numColumns * 3) - 2 // Adjust for padding/borders
-	availableWidth := m.width - 16 // Adjust for padding/borders
+	availableWidth := m.width - 18 // Adjust for padding/borders
 
 	if totalIdealWidth >= availableWidth {
 		// Shrink columns proportionally

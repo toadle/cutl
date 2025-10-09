@@ -127,8 +127,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 	}
 
-	m.table, cmd = m.table.Update(msg)
-	cmds = append(cmds, cmd)
+	if m.state == tableView {
+		m.table, cmd = m.table.Update(msg)
+		cmds = append(cmds, cmd)
+	}
 	m.commandPanel, cmd = m.commandPanel.Update(msg)
 	cmds = append(cmds, cmd)
 
