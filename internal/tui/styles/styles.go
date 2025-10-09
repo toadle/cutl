@@ -46,6 +46,7 @@ var (
 	CommandTitle        = Label.Copy().Background(dullFuchsia).Foreground(cream).Padding(0, 1).MarginRight(2)
 	CommandLabel        = Label.Copy().Foreground(dullFuchsia).MarginRight(2)
 	CommandLabelTrigger = Label.Copy().Foreground(fuchsia).Bold(true)
+	CommandMeta         = Label.Copy().Foreground(midGray).MarginLeft(2)
 
 	Text      = lipgloss.NewStyle().Foreground(normal)
 	InfoLabel = Label.Copy().Foreground(darkGray)

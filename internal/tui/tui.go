@@ -42,7 +42,7 @@ func New(jsonlPath string) *Model {
 	return m
 }
 
-func (m *Model) Init() tea.Cmd {	
+func (m *Model) Init() tea.Cmd {
 	return func() tea.Msg {
 		jsonlContent, err := editor.LoadJSONL(m.jsonlPath)
 
@@ -111,7 +111,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				rawQuery := m.commandPanel.Value()
 
 				// Sanitize input
-				sanitizedQuery := strings.ReplaceAll(rawQuery, " ", " ")   // non-breaking space
+				sanitizedQuery := strings.ReplaceAll(rawQuery, " ", " ")       // non-breaking space
 				sanitizedQuery = strings.ReplaceAll(sanitizedQuery, "'", "\"") // single to double quotes
 
 				return m, func() tea.Msg {
@@ -131,6 +131,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	cmds = append(cmds, cmd)
 	m.commandPanel, cmd = m.commandPanel.Update(msg)
 	cmds = append(cmds, cmd)
+
+	m.commandPanel.SetMeta(
+		m.table.TotalRows(),
+		m.table.FilteredRows(),
+		m.table.SelectedOriginalLine(),
+		m.table.FilterQuery() != "",
+	)
 
 	return m, tea.Batch(cmds...)
 }

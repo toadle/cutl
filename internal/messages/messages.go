@@ -1,5 +1,7 @@
 package messages
 
+import "cutl/internal/editor"
+
 type ColumnQueryChanged struct {
 	Queries []string
 }
@@ -9,7 +11,7 @@ type FilterQueryChanged struct {
 }
 
 type InputFileLoaded struct {
-	Content []any
+	Content []editor.Entry
 }
 
 type InputFileLoadError struct {

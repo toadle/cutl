@@ -8,7 +8,12 @@ import (
 	"github.com/charmbracelet/log"
 )
 
-func LoadJSONL(filePath string) ([]any, error) {
+type Entry struct {
+	Data any
+	Line int
+}
+
+func LoadJSONL(filePath string) ([]Entry, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
 		log.Error("Fehler beim Öffnen der JSONL-Datei:", "error", err)
@@ -16,16 +21,18 @@ func LoadJSONL(filePath string) ([]any, error) {
 	}
 	defer file.Close()
 
-	var result []any
+	var result []Entry
+	lineNumber := 0
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
+		lineNumber++
 		line := scanner.Bytes()
 		if len(line) == 0 {
 			continue
 		}
 		var obj any
 		if err := json.Unmarshal(line, &obj); err == nil {
-			result = append(result, obj)
+			result = append(result, Entry{Data: obj, Line: lineNumber})
 		}
 	}
 	if err := scanner.Err(); err != nil {

@@ -1,6 +1,7 @@
 package cutable
 
 import (
+	"cutl/internal/editor"
 	"cutl/internal/messages"
 	"fmt"
 	"sort"
@@ -14,12 +15,13 @@ import (
 )
 
 type Model struct {
-	height        int
-	width         int
-	table         table.Model
-	columnQueries []string
-	filterQuery   string
-	rawData       []any
+	height          int
+	width           int
+	table           table.Model
+	columnQueries   []string
+	filterQuery     string
+	rawEntries      []editor.Entry
+	filteredEntries []editor.Entry
 }
 
 func (m *Model) Init() tea.Cmd {
@@ -54,10 +56,10 @@ func (m *Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.rebuildTable()
 	case messages.InputFileLoaded:
 		log.Debugf("Received InputFileLoaded message with %d entries.", len(msg.Content))
-		m.rawData = msg.Content
+		m.rawEntries = msg.Content
 
-		if len(m.columnQueries) == 0 {
-			if first, ok := m.rawData[0].(map[string]interface{}); ok {
+		if len(m.columnQueries) == 0 && len(m.rawEntries) > 0 {
+			if first, ok := m.rawEntries[0].Data.(map[string]interface{}); ok {
 				m.columnQueries = discoverInitialColumnQueries(first)
 			}
 		}
@@ -75,34 +77,41 @@ func (m *Model) rebuildTable() {
 		columns = append(columns, table.Column{Title: q, Width: 10})
 	}
 
-	filteredData := m.rawData
+	m.filteredEntries = m.rawEntries
 	if m.filterQuery != "" {
-		// Construct the full query: [.[] | select(<user_query>)]
-		queryStr := fmt.Sprintf("[.[] | select(%s)]", m.filterQuery)
-		query, err := gojq.Parse(queryStr)
+		filterStr := fmt.Sprintf("select(%s)", m.filterQuery)
+		query, err := gojq.Parse(filterStr)
 		if err != nil {
-			log.Errorf("Error parsing constructed filter query '%s': %v", queryStr, err)
-			// Bei einem Fehler in der Abfrage werden alle Daten angezeigt, um eine leere Tabelle zu vermeiden
+			log.Errorf("Error parsing filter query '%s': %v", filterStr, err)
+			m.filteredEntries = m.rawEntries
 		} else {
-			iter := query.Run(m.rawData)
-			v, ok := iter.Next()
-			if !ok {
-				// Sollte nicht passieren, wenn die Abfrage korrekt ist, aber wir behandeln es.
-				filteredData = []any{}
-			} else if err, ok := v.(error); ok {
-				log.Errorf("Error executing filter query '%s': %v", queryStr, err)
-				// Bei einem Ausführungsfehler werden alle Daten angezeigt
-			} else if result, ok := v.([]any); ok {
-				filteredData = result
+			var (
+				filtered []editor.Entry
+				hadError bool
+			)
+			for _, entry := range m.rawEntries {
+				iter := query.Run(entry.Data)
+				v, ok := iter.Next()
+				if !ok {
+					continue
+				}
+				if execErr, isErr := v.(error); isErr {
+					log.Errorf("Error executing filter query '%s': %v", filterStr, execErr)
+					hadError = true
+					break
+				}
+				filtered = append(filtered, entry)
+			}
+			if hadError {
+				m.filteredEntries = m.rawEntries
 			} else {
-				log.Errorf("Filter query did not return an array as expected.")
-				// Das Ergebnis ist kein Array, also werden alle Daten angezeigt
+				m.filteredEntries = filtered
 			}
 		}
 	}
 
 	var rows []table.Row
-	for _, item := range filteredData {
+	for _, entry := range m.filteredEntries {
 		var row []string
 		for _, col := range columns {
 			query, err := gojq.Parse(col.Title)
@@ -112,14 +121,13 @@ func (m *Model) rebuildTable() {
 				continue
 			}
 
-			iter := query.Run(item) // or query.RunWithContext(context.Background(), item)
+			iter := query.Run(entry.Data)
 			val := ""
 			v, ok := iter.Next()
 			if !ok {
-				// No value found
 				val = ""
-			} else if err, ok := v.(error); ok {
-				log.Errorf("Error executing jq query '%s': %v", col.Title, err)
+			} else if execErr, isErr := v.(error); isErr {
+				log.Errorf("Error executing jq query '%s': %v", col.Title, execErr)
 				val = "ERR:EXEC"
 			} else {
 				switch v := v.(type) {
@@ -136,7 +144,6 @@ func (m *Model) rebuildTable() {
 
 	h := m.table.Height()
 
-	// Create a new table model
 	newTable := table.New(
 		table.WithColumns(columns),
 		table.WithRows(rows),
@@ -173,6 +180,27 @@ func (m *Model) ColumnQueries() []string {
 
 func (m *Model) FilterQuery() string {
 	return m.filterQuery
+}
+
+func (m *Model) TotalRows() int {
+	return len(m.rawEntries)
+}
+
+func (m *Model) FilteredRows() int {
+	return len(m.filteredEntries)
+}
+
+func (m *Model) SelectedOriginalLine() int {
+	if len(m.filteredEntries) == 0 {
+		return 0
+	}
+
+	cursor := m.table.Cursor()
+	if cursor < 0 || cursor >= len(m.filteredEntries) {
+		return 0
+	}
+
+	return m.filteredEntries[cursor].Line
 }
 
 func (m *Model) SetHeight(height int) {
