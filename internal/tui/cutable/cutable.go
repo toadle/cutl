@@ -287,6 +287,71 @@ func (m *Model) ClearMarks() {
 	m.rebuildTable()
 }
 
+func (m *Model) DeleteMarkedOrSelected() int {
+	if len(m.rawEntries) == 0 {
+		return 0
+	}
+
+	linesToDelete := make(map[int]struct{})
+	if len(m.marked) > 0 {
+		for line := range m.marked {
+			linesToDelete[line] = struct{}{}
+		}
+	} else {
+		selected := m.SelectedEntry()
+		if selected == nil {
+			return 0
+		}
+		linesToDelete[selected.Line] = struct{}{}
+	}
+
+	if len(linesToDelete) == 0 {
+		return 0
+	}
+
+	newEntries := make([]editor.Entry, 0, len(m.rawEntries)-len(linesToDelete))
+	for _, entry := range m.rawEntries {
+		if _, remove := linesToDelete[entry.Line]; remove {
+			continue
+		}
+		newEntries = append(newEntries, entry)
+	}
+
+	if len(newEntries) == len(m.rawEntries) {
+		return 0
+	}
+
+	for idx := range newEntries {
+		newEntries[idx].Line = idx + 1
+	}
+
+	previousCursor := m.table.Cursor()
+	m.rawEntries = newEntries
+	m.marked = make(map[int]struct{})
+	m.rebuildTable()
+
+	if len(m.filteredEntries) == 0 {
+		m.table.SetCursor(0)
+	} else {
+		newCursor := previousCursor
+		if newCursor >= len(m.filteredEntries) {
+			newCursor = len(m.filteredEntries) - 1
+		}
+		if newCursor < 0 {
+			newCursor = 0
+		}
+		m.table.SetCursor(newCursor)
+	}
+
+	return len(linesToDelete)
+}
+
+func (m *Model) Entries() []editor.Entry {
+	entries := make([]editor.Entry, len(m.rawEntries))
+	copy(entries, m.rawEntries)
+	return entries
+}
+
 func (m *Model) SetHeight(height int) {
 	m.table.SetHeight(height)
 }

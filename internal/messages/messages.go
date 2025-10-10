@@ -17,3 +17,12 @@ type InputFileLoaded struct {
 type InputFileLoadError struct {
 	Error error
 }
+
+type InputFileWritten struct {
+	Path  string
+	Count int
+}
+
+type InputFileWriteError struct {
+	Error error
+}

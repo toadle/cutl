@@ -8,6 +8,7 @@ import (
 	"cutl/internal/tui/styles"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/viewport"
@@ -30,12 +31,16 @@ type Model struct {
 	height int
 	state  viewState
 
-	jsonlPath      string
-	table          cutable.Model
-	commandPanel   commandpanel.Model
-	detailViewport viewport.Model
-	detailContent  string
-	detailLine     int
+	jsonlPath               string
+	table                   cutable.Model
+	commandPanel            commandpanel.Model
+	detailViewport          viewport.Model
+	detailContent           string
+	detailLine              int
+	confirmationActive      bool
+	pendingWriteCmd         tea.Cmd
+	statusMessage           string
+	clearStatusOnNextAction bool
 }
 
 func New(jsonlPath string) *Model {
@@ -77,6 +82,26 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		key := msg.String()
+		if m.clearStatusOnNextAction && !m.confirmationActive {
+			m.clearStatusMessage()
+		}
+		if m.confirmationActive {
+			skipTableUpdate = true
+			switch key {
+			case "y", "Y", "enter":
+				m.confirmationActive = false
+				if m.pendingWriteCmd != nil {
+					m.setStatusMessage("Speichere…", false)
+					cmds = append(cmds, m.pendingWriteCmd)
+					m.pendingWriteCmd = nil
+				}
+			case "n", "N", "esc":
+				m.confirmationActive = false
+				m.pendingWriteCmd = nil
+				m.setStatusMessage("Speichern abgebrochen", true)
+			}
+			break
+		}
 		switch m.state {
 		case tableView:
 			switch key {
@@ -97,6 +122,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case " ":
 				skipTableUpdate = true
 				m.table.ToggleMarkSelected()
+			case "x", "X":
+				skipTableUpdate = true
+				removed := m.table.DeleteMarkedOrSelected()
+				if removed > 0 {
+					log.Infof("Deleted %d entries", removed)
+				}
+			case "w", "W":
+				skipTableUpdate = true
+				m.requestWriteConfirmation()
 			case "esc":
 				if m.table.MarkedCount() > 0 {
 					skipTableUpdate = true
@@ -153,6 +187,21 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			case " ":
 				m.table.ToggleMarkSelected()
+			case "x", "X":
+				removed := m.table.DeleteMarkedOrSelected()
+				if removed > 0 {
+					log.Infof("Deleted %d entries", removed)
+					if m.table.FilteredRows() == 0 {
+						m.state = tableView
+						m.detailViewport.SetContent("")
+						m.detailContent = ""
+						m.detailLine = 0
+						return m, nil
+					}
+					m.updateDetailContent(m.table.SelectedEntry(), true)
+				}
+			case "w", "W":
+				m.requestWriteConfirmation()
 			case "ctrl+c", "q":
 				return m, tea.Quit
 			}
@@ -161,6 +210,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+	case messages.InputFileWritten:
+		log.Infof("Saved %d entries to %s", msg.Count, msg.Path)
+		filename := filepath.Base(msg.Path)
+		if filename == "" {
+			filename = msg.Path
+		}
+		m.setStatusMessage(fmt.Sprintf("Gespeichert: %s (%d Zeilen)", filename, msg.Count), true)
+	case messages.InputFileWriteError:
+		log.Errorf("Failed to write JSONL file %s: %v", m.jsonlPath, msg.Error)
+		m.setStatusMessage(fmt.Sprintf("Speichern fehlgeschlagen: %v", msg.Error), true)
 	}
 
 	if !skipTableUpdate && (m.state == tableView || m.state == detailView) {
@@ -279,4 +338,40 @@ func (m *Model) updateDetailContent(entry *editor.Entry, reset bool) {
 	}
 
 	m.detailLine = line
+}
+
+func (m *Model) setStatusMessage(message string, clearOnNext bool) {
+	m.statusMessage = message
+	m.clearStatusOnNextAction = clearOnNext
+	m.commandPanel.SetStatus(message)
+}
+
+func (m *Model) clearStatusMessage() {
+	if m.statusMessage == "" && !m.clearStatusOnNextAction {
+		return
+	}
+	m.statusMessage = ""
+	m.clearStatusOnNextAction = false
+	m.commandPanel.SetStatus("")
+}
+
+func (m *Model) requestWriteConfirmation() {
+	m.pendingWriteCmd = m.writeTableToFileCmd()
+	filename := filepath.Base(m.jsonlPath)
+	if filename == "" {
+		filename = m.jsonlPath
+	}
+	prompt := fmt.Sprintf("Änderungen nach %s schreiben? (y/N)", filename)
+	m.confirmationActive = true
+	m.setStatusMessage(prompt, false)
+}
+
+func (m *Model) writeTableToFileCmd() tea.Cmd {
+	entries := m.table.Entries()
+	return func() tea.Msg {
+		if err := editor.WriteJSONL(m.jsonlPath, entries); err != nil {
+			return messages.InputFileWriteError{Error: err}
+		}
+		return messages.InputFileWritten{Path: m.jsonlPath, Count: len(entries)}
+	}
 }

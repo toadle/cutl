@@ -43,12 +43,13 @@ var (
 	ProgressPanel = lipgloss.NewStyle().MarginBottom(1)
 	DetailPanel   = lipgloss.NewStyle().MarginBottom(1).Border(lipgloss.NormalBorder(), true).BorderForeground(darkGray).BorderBottom(false).BorderLeft(false).BorderRight(false)
 
-	CommandTitle        = Label.Background(dullFuchsia).Foreground(cream).Padding(0, 1).MarginRight(2)
-	CommandLabel        = Label.Foreground(dullFuchsia).MarginRight(2)
-	CommandLabelTrigger = Label.Foreground(fuchsia).Bold(true)
-	CommandSelectionLabel = CommandLabel.Foreground(indigo)
+	CommandTitle                 = Label.Background(dullFuchsia).Foreground(cream).Padding(0, 1).MarginRight(2)
+	CommandLabel                 = Label.Foreground(dullFuchsia).MarginRight(2)
+	CommandLabelTrigger          = Label.Foreground(fuchsia).Bold(true)
+	CommandSelectionLabel        = CommandLabel.Foreground(indigo)
 	CommandSelectionLabelTrigger = CommandLabelTrigger.Foreground(indigo).Bold(true)
-	CommandMeta         = Label.Foreground(midGray).MarginLeft(2)
+	CommandMeta                  = Label.Foreground(midGray).MarginLeft(2)
+	CommandStatus                = Label.Foreground(semiDimGreen).MarginTop(1)
 
 	Text      = lipgloss.NewStyle().Foreground(normal)
 	InfoLabel = Label.Foreground(darkGray)
