@@ -77,18 +77,26 @@ func (m *Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 func (m *Model) View() string {
 	metaContent := m.metaContent()
+	selectionInfo := m.selectionInfo()
 
 	if m.active {
 		left := m.textInput.View()
+		if selectionInfo != "" {
+			left = lipgloss.JoinHorizontal(lipgloss.Top, left, selectionInfo)
+		}
 		return styles.CommandPanel.Width(m.width).Render(m.layoutWithMeta(left, metaContent))
 	}
 
 	var sections []string
 	sections = append(sections, styles.CommandTitle.Render("Commands"))
+
 	sections = append(sections, lipgloss.StyleRunes("Details", []int{0, 0}, styles.CommandLabelTrigger, styles.CommandLabel))
 	sections = append(sections, lipgloss.StyleRunes("Filter", []int{0, 0}, styles.CommandLabelTrigger, styles.CommandLabel))
 	sections = append(sections, lipgloss.StyleRunes("Columns", []int{0, 0}, styles.CommandLabelTrigger, styles.CommandLabel))
 	sections = append(sections, lipgloss.StyleRunes("Edit", []int{0, 0}, styles.CommandLabelTrigger, styles.CommandLabel))
+	if selectionInfo != "" {
+		sections = append(sections, selectionInfo)
+	}
 
 	left := lipgloss.JoinHorizontal(lipgloss.Top, sections...)
 	return styles.CommandPanel.Width(m.width).Render(m.layoutWithMeta(left, metaContent))
@@ -102,16 +110,34 @@ func (m *Model) metaContent() string {
 
 	base := fmt.Sprintf("%s / %d", current, m.totalRows)
 
-	details := []string{fmt.Sprintf("%d marked", m.markedCount)}
+	details := []string{}
 	if m.filterActive {
 		filteredOut := m.totalRows - m.filteredRows
 		if filteredOut < 0 {
 			filteredOut = 0
 		}
-		details = append([]string{fmt.Sprintf("%d filtered", filteredOut)}, details...)
+		details = append(details, fmt.Sprintf("%d filtered", filteredOut))
+	}
+
+	if len(details) == 0 {
+		return base
 	}
 
 	return fmt.Sprintf("%s (%s)", base, strings.Join(details, ", "))
+}
+
+func (m *Model) selectionInfo() string {
+	if m.markedCount == 0 {
+		return ""
+	}
+
+	hint := lipgloss.JoinHorizontal(
+		lipgloss.Top,
+		styles.CommandSelectionLabelTrigger.Render("ESC "),
+		styles.CommandSelectionLabel.Render(fmt.Sprintf("Clear selection of %d lines", m.markedCount)),
+	)
+
+	return hint
 }
 
 func (m *Model) layoutWithMeta(left, meta string) string {

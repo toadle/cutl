@@ -278,6 +278,15 @@ func (m *Model) ToggleMarkSelected() {
 	m.rebuildTable()
 }
 
+func (m *Model) ClearMarks() {
+	if len(m.marked) == 0 {
+		return
+	}
+
+	m.marked = make(map[int]struct{})
+	m.rebuildTable()
+}
+
 func (m *Model) SetHeight(height int) {
 	m.table.SetHeight(height)
 }

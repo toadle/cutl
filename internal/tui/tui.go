@@ -97,6 +97,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case " ":
 				skipTableUpdate = true
 				m.table.ToggleMarkSelected()
+			case "esc":
+				if m.table.MarkedCount() > 0 {
+					skipTableUpdate = true
+					m.table.ClearMarks()
+				}
 			case "ctrl+c", "q":
 				return m, tea.Quit
 			}
