@@ -91,14 +91,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "y", "Y", "enter":
 				m.confirmationActive = false
 				if m.pendingWriteCmd != nil {
-					m.setStatusMessage("Speichere…", false)
+					m.setStatusMessage("Saving…", false)
 					cmds = append(cmds, m.pendingWriteCmd)
 					m.pendingWriteCmd = nil
 				}
 			case "n", "N", "esc":
 				m.confirmationActive = false
 				m.pendingWriteCmd = nil
-				m.setStatusMessage("Speichern abgebrochen", true)
+				m.setStatusMessage("Save cancelled", true)
 			}
 			break
 		}
@@ -135,6 +135,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.table.MarkedCount() > 0 {
 					skipTableUpdate = true
 					m.table.ClearMarks()
+				}
+			case "1", "2", "3", "4", "5", "6", "7", "8", "9":
+				skipTableUpdate = true
+				if columnIndex := int(key[0] - '1'); columnIndex < len(m.table.ColumnQueries()) {
+					return m, func() tea.Msg {
+						return messages.SortByColumn{ColumnIndex: columnIndex}
+					}
 				}
 			case "ctrl+c", "q":
 				return m, tea.Quit
@@ -202,6 +209,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			case "w", "W":
 				m.requestWriteConfirmation()
+			case "1", "2", "3", "4", "5", "6", "7", "8", "9":
+				if columnIndex := int(key[0] - '1'); columnIndex < len(m.table.ColumnQueries()) {
+					cmds = append(cmds, func() tea.Msg {
+						return messages.SortByColumn{ColumnIndex: columnIndex}
+					})
+				}
 			case "ctrl+c", "q":
 				return m, tea.Quit
 			}

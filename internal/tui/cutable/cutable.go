@@ -23,6 +23,8 @@ type Model struct {
 	rawEntries      []editor.Entry
 	filteredEntries []editor.Entry
 	marked          map[int]struct{}
+	sortColumn      int
+	sortAscending   bool
 }
 
 const (
@@ -43,6 +45,8 @@ func New() Model {
 		table:         t,
 		columnQueries: []string{}, // Initialisiere leeres Array
 		marked:        make(map[int]struct{}),
+		sortColumn:    -1,
+		sortAscending: true,
 	}
 
 	return m
@@ -60,6 +64,14 @@ func (m *Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	case messages.FilterQueryChanged:
 		m.filterQuery = msg.Query
 		m.rebuildTable()
+	case messages.SortByColumn:
+		if msg.ColumnIndex == m.sortColumn {
+			m.sortAscending = !m.sortAscending
+		} else {
+			m.sortColumn = msg.ColumnIndex
+			m.sortAscending = true
+		}
+		m.rebuildTableWithSort()
 	case messages.InputFileLoaded:
 		log.Debugf("Received InputFileLoaded message with %d entries.", len(msg.Content))
 		m.rawEntries = msg.Content
@@ -78,8 +90,16 @@ func (m *Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 }
 
 func (m *Model) rebuildTable() {
+	m.rebuildTableInternal(true)
+}
+
+func (m *Model) rebuildTableWithSort() {
+	m.rebuildTableInternal(false)
+}
+
+func (m *Model) rebuildTableInternal(preserveSelection bool) {
 	selectedLine := -1
-	if len(m.filteredEntries) > 0 {
+	if preserveSelection && len(m.filteredEntries) > 0 {
 		if line := m.SelectedOriginalLine(); line > 0 {
 			selectedLine = line
 		}
@@ -91,8 +111,16 @@ func (m *Model) rebuildTable() {
 	if showMarker {
 		columns = append(columns, table.Column{Title: "●", Width: 2})
 	}
-	for _, q := range m.columnQueries {
-		columns = append(columns, table.Column{Title: q, Width: 10})
+	for i, q := range m.columnQueries {
+		title := q
+		if m.sortColumn == i {
+			if m.sortAscending {
+				title = q + " ↑"
+			} else {
+				title = q + " ↓"
+			}
+		}
+		columns = append(columns, table.Column{Title: title, Width: 10})
 	}
 
 	m.filteredEntries = m.rawEntries
@@ -126,6 +154,11 @@ func (m *Model) rebuildTable() {
 				m.filteredEntries = filtered
 			}
 		}
+	}
+
+	// Sort entries if a sort column is specified
+	if m.sortColumn >= 0 && m.sortColumn < len(m.columnQueries) {
+		m.sortEntries()
 	}
 
 	var (
@@ -181,8 +214,10 @@ func (m *Model) rebuildTable() {
 		m.table.SetColumns(columns)
 		m.table.SetRows(rows)
 	}
-	if cursorPos >= 0 {
+	if preserveSelection && cursorPos >= 0 {
 		m.table.SetCursor(cursorPos)
+	} else if !preserveSelection {
+		m.table.SetCursor(0)
 	}
 	m.updateColumnWidths()
 }
@@ -483,4 +518,68 @@ func discoverInitialColumnQueries(first map[string]interface{}) []string {
 		return keys[:5]
 	}
 	return keys
+}
+
+func (m *Model) sortEntries() {
+	if m.sortColumn < 0 || m.sortColumn >= len(m.columnQueries) {
+		return
+	}
+
+	sortQuery := m.columnQueries[m.sortColumn]
+	query, err := gojq.Parse(sortQuery)
+	if err != nil {
+		log.Errorf("Error parsing sort query '%s': %v", sortQuery, err)
+		return
+	}
+
+	sort.Slice(m.filteredEntries, func(i, j int) bool {
+		valI := m.extractSortValue(query, m.filteredEntries[i])
+		valJ := m.extractSortValue(query, m.filteredEntries[j])
+
+		result := m.compareSortValues(valI, valJ)
+		if m.sortAscending {
+			return result
+		}
+		return !result
+	})
+}
+
+func (m *Model) extractSortValue(query *gojq.Query, entry editor.Entry) interface{} {
+	iter := query.Run(entry.Data)
+	v, ok := iter.Next()
+	if !ok {
+		return ""
+	}
+	if _, isErr := v.(error); isErr {
+		return ""
+	}
+	return v
+}
+
+func (m *Model) compareSortValues(a, b interface{}) bool {
+	// Convert to strings for comparison if types don't match
+	aStr := fmt.Sprintf("%v", a)
+	bStr := fmt.Sprintf("%v", b)
+
+	// Try to compare as numbers if both look like numbers
+	if aNum, aErr := parseNumber(aStr); aErr == nil {
+		if bNum, bErr := parseNumber(bStr); bErr == nil {
+			return aNum < bNum
+		}
+	}
+
+	// String comparison as fallback
+	return strings.ToLower(aStr) < strings.ToLower(bStr)
+}
+
+func parseNumber(s string) (float64, error) {
+	if s == "" {
+		return 0, fmt.Errorf("empty string")
+	}
+	var result float64
+	n, err := fmt.Sscanf(s, "%f", &result)
+	if n != 1 || err != nil {
+		return 0, err
+	}
+	return result, nil
 }

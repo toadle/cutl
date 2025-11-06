@@ -26,3 +26,7 @@ type InputFileWritten struct {
 type InputFileWriteError struct {
 	Error error
 }
+
+type SortByColumn struct {
+	ColumnIndex int
+}

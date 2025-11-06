@@ -107,6 +107,11 @@ func (m *Model) View() string {
 		styles.CommandLabelTrigger.Render("W "),
 		styles.CommandLabel.Render("Write file"),
 	))
+	sections = append(sections, lipgloss.JoinHorizontal(
+		lipgloss.Top,
+		styles.CommandLabelTrigger.Render("1-9 "),
+		styles.CommandLabel.Render("Sort by column"),
+	))
 	if selectionInfo != "" {
 		sections = append(sections, selectionInfo)
 	}
