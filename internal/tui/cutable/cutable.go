@@ -77,10 +77,14 @@ func (m *Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		log.Debugf("Received InputFileLoaded message with %d entries.", len(msg.Content))
 		m.rawEntries = msg.Content
 
+		// Only discover columns if none are set (they might be loaded from config)
 		if len(m.columnQueries) == 0 && len(m.rawEntries) > 0 {
 			if first, ok := m.rawEntries[0].Data.(map[string]interface{}); ok {
 				m.columnQueries = discoverInitialColumnQueries(first)
+				log.Debugf("Auto-discovered columns: %v", m.columnQueries)
 			}
+		} else {
+			log.Debugf("Using pre-configured columns: %v", m.columnQueries)
 		}
 		m.rebuildTable()
 	}
@@ -274,6 +278,11 @@ func (m *Model) MarkedLines() []int {
 		lines = append(lines, line)
 	}
 	return lines
+}
+
+func (m *Model) SetColumnQueries(queries []string) {
+	m.columnQueries = queries
+	log.Debugf("Set column queries: %v", queries)
 }
 
 func (m *Model) SelectedOriginalLine() int {

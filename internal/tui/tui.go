@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"cutl/internal/config"
 	"cutl/internal/editor"
 	"cutl/internal/messages"
 	"cutl/internal/tui/commandpanel"
@@ -49,14 +50,25 @@ type Model struct {
 	editInputs      []textinput.Model
 	editSingleMode  bool
 	editTargetLines []int
+
+	// Configuration
+	config *config.Config
 }
 
 func New(jsonlPath string) *Model {
+	// Load configuration
+	cfg, err := config.Load()
+	if err != nil {
+		log.Warnf("Failed to load config: %v", err)
+		cfg = &config.Config{Files: make(map[string]config.FileConfig)}
+	}
+
 	m := &Model{
 		table:        cutable.New(),
 		commandPanel: commandpanel.New(),
 		jsonlPath:    jsonlPath,
 		state:        tableView,
+		config:       cfg,
 	}
 
 	m.detailViewport = viewport.New(0, 0)
@@ -66,6 +78,12 @@ func New(jsonlPath string) *Model {
 
 func (m *Model) Init() tea.Cmd {
 	return func() tea.Msg {
+		// Try to load saved column configuration for this file
+		if fileConfig, exists := m.config.GetFileConfig(m.jsonlPath); exists && len(fileConfig.Columns) > 0 {
+			log.Debugf("Loaded saved columns for %s: %v", m.jsonlPath, fileConfig.Columns)
+			m.table.SetColumnQueries(fileConfig.Columns)
+		}
+
 		jsonlContent, err := editor.LoadJSONL(m.jsonlPath)
 
 		if err != nil {
@@ -170,6 +188,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				queries := strings.Split(rawQueries, ",")
 				for i, q := range queries {
 					queries[i] = strings.TrimSpace(q)
+				}
+
+				// Save column configuration for this file
+				if err := m.config.UpdateColumns(m.jsonlPath, queries); err != nil {
+					log.Warnf("Failed to save column configuration: %v", err)
+				} else {
+					log.Debugf("Saved column configuration for %s: %v", m.jsonlPath, queries)
 				}
 
 				return m, func() tea.Msg {
