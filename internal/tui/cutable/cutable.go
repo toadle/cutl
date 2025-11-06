@@ -454,7 +454,46 @@ func (m *Model) updateColumnWidths() {
 		}
 	}
 
-	if len(columns) > 0 && columns[0].Title == "." && len(widths) > 1 {
+	// Ensure minimum width of 10 characters for each column (except marker column)
+	const minWidth = 10
+	totalNeeded := 0
+	startCol := 0
+	if len(columns) > 0 && columns[0].Title == "●" {
+		startCol = 1 // Skip the marker column
+	}
+
+	for i := startCol; i < numColumns; i++ {
+		if widths[i] < minWidth {
+			totalNeeded += minWidth - widths[i]
+			widths[i] = minWidth
+		}
+	}
+
+	// If we need more space, take it from the widest columns
+	if totalNeeded > 0 {
+		for totalNeeded > 0 && numColumns > startCol {
+			// Find the widest column that can give up space (excluding marker column)
+			maxIdx := -1
+			maxWidth := minWidth
+			for i := startCol; i < numColumns; i++ {
+				if widths[i] > maxWidth {
+					maxWidth = widths[i]
+					maxIdx = i
+				}
+			}
+
+			// If no column can give up space, break
+			if maxIdx == -1 {
+				break
+			}
+
+			// Take one character from the widest column
+			widths[maxIdx]--
+			totalNeeded--
+		}
+	}
+
+	if len(columns) > 0 && columns[0].Title == "●" && len(widths) > 1 {
 		maxIdx := 1
 		for i := 2; i < len(widths); i++ {
 			if widths[i] > widths[maxIdx] {

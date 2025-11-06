@@ -229,10 +229,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if filename == "" {
 			filename = msg.Path
 		}
-		m.setStatusMessage(fmt.Sprintf("Gespeichert: %s (%d Zeilen)", filename, msg.Count), true)
+		m.setStatusMessage(fmt.Sprintf("Saved: %s (%d rows)", filename, msg.Count), true)
 	case messages.InputFileWriteError:
 		log.Errorf("Failed to write JSONL file %s: %v", m.jsonlPath, msg.Error)
-		m.setStatusMessage(fmt.Sprintf("Speichern fehlgeschlagen: %v", msg.Error), true)
+		m.setStatusMessage(fmt.Sprintf("Save failed: %v", msg.Error), true)
 	}
 
 	if !skipTableUpdate && (m.state == tableView || m.state == detailView) {
@@ -316,10 +316,10 @@ func (m *Model) renderDetailView() string {
 	}
 
 	if entry == nil {
-		return detailStyle.Render(styles.Text.Render("Kein Eintrag ausgewählt."))
+		return detailStyle.Render(styles.Text.Render("No entry selected."))
 	}
 
-	info := styles.InfoLabel.Render(fmt.Sprintf("Zeile %d — drücke D oder ESC für die Tabelle", entry.Line))
+	info := styles.InfoLabel.Render(fmt.Sprintf("Line %d — press D or ESC to return to the table", entry.Line))
 	viewportView := m.detailViewport.View()
 
 	return detailStyle.Render(lipgloss.JoinVertical(lipgloss.Left, info, "", viewportView))
@@ -334,7 +334,7 @@ func (m *Model) updateDetailContent(entry *editor.Entry, reset bool) {
 	if entry != nil {
 		formatted, err := json.MarshalIndent(entry.Data, "", "  ")
 		if err != nil {
-			content = styles.Text.Copy().Render(fmt.Sprintf("Fehler beim Formatieren: %v", err))
+			content = styles.Text.Copy().Render(fmt.Sprintf("Error formatting entry: %v", err))
 		} else {
 			content = styles.Text.Copy().Render(string(formatted))
 		}
@@ -374,7 +374,7 @@ func (m *Model) requestWriteConfirmation() {
 	if filename == "" {
 		filename = m.jsonlPath
 	}
-	prompt := fmt.Sprintf("Änderungen nach %s schreiben? (y/N)", filename)
+	prompt := fmt.Sprintf("Write changes to %s? (y/N)", filename)
 	m.confirmationActive = true
 	m.setStatusMessage(prompt, false)
 }

@@ -130,11 +130,7 @@ func (m *Model) metaContent() string {
 
 	details := []string{}
 	if m.filterActive {
-		filteredOut := m.totalRows - m.filteredRows
-		if filteredOut < 0 {
-			filteredOut = 0
-		}
-		details = append(details, fmt.Sprintf("%d filtered", filteredOut))
+		details = append(details, fmt.Sprintf("%d shown", m.filteredRows))
 	}
 
 	if len(details) == 0 {

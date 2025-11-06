@@ -11,7 +11,7 @@ import (
 func WriteJSONL(filePath string, entries []Entry) error {
 	file, err := os.Create(filePath)
 	if err != nil {
-		log.Error("Fehler beim Öffnen der JSONL-Datei zum Schreiben:", "error", err)
+		log.Error("Failed to open JSONL file for writing:", "error", err)
 		return err
 	}
 	defer file.Close()
@@ -21,23 +21,23 @@ func WriteJSONL(filePath string, entries []Entry) error {
 	for _, entry := range entries {
 		data, err := json.Marshal(entry.Data)
 		if err != nil {
-			log.Error("Fehler beim Serialisieren eines JSON-Objekts:", "error", err)
+			log.Error("Failed to serialize JSON object:", "error", err)
 			return err
 		}
 
 		if _, err := writer.Write(data); err != nil {
-			log.Error("Fehler beim Schreiben der JSONL-Datei:", "error", err)
+			log.Error("Failed to write JSONL file:", "error", err)
 			return err
 		}
 
 		if err := writer.WriteByte('\n'); err != nil {
-			log.Error("Fehler beim Hinzufügen eines Zeilenumbruchs:", "error", err)
+			log.Error("Failed to append newline:", "error", err)
 			return err
 		}
 	}
 
 	if err := writer.Flush(); err != nil {
-		log.Error("Fehler beim Abschließen des Schreibens der JSONL-Datei:", "error", err)
+		log.Error("Failed to flush JSONL writer:", "error", err)
 		return err
 	}
 

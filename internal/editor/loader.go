@@ -16,7 +16,7 @@ type Entry struct {
 func LoadJSONL(filePath string) ([]Entry, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
-		log.Error("Fehler beim Öffnen der JSONL-Datei:", "error", err)
+		log.Error("Failed to open JSONL file:", "error", err)
 		return nil, err
 	}
 	defer file.Close()
@@ -36,7 +36,7 @@ func LoadJSONL(filePath string) ([]Entry, error) {
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		log.Error("Fehler beim Lesen der JSONL-Datei:", "error", err)
+		log.Error("Failed to read JSONL file:", "error", err)
 		return nil, err
 	}
 	log.Debugf("Erfolgreich %d JSON-Objekte aus der Datei %s geladen.", len(result), filePath)
