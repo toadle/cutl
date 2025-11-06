@@ -93,12 +93,10 @@ func (m *Model) View() string {
 	}
 
 	var sections []string
-	sections = append(sections, styles.CommandTitle.Render("Commands"))
-
-	sections = append(sections, lipgloss.StyleRunes("Details", []int{0, 0}, styles.CommandLabelTrigger, styles.CommandLabel))
-	sections = append(sections, lipgloss.StyleRunes("Filter", []int{0, 0}, styles.CommandLabelTrigger, styles.CommandLabel))
-	sections = append(sections, lipgloss.StyleRunes("Columns", []int{0, 0}, styles.CommandLabelTrigger, styles.CommandLabel))
-	sections = append(sections, lipgloss.StyleRunes("Edit", []int{0, 0}, styles.CommandLabelTrigger, styles.CommandLabel))
+	sections = append(sections, lipgloss.StyleRunes("D Details", []int{0, 0}, styles.CommandLabelTrigger, styles.CommandLabel))
+	sections = append(sections, lipgloss.StyleRunes("F Filter", []int{0, 0}, styles.CommandLabelTrigger, styles.CommandLabel))
+	sections = append(sections, lipgloss.StyleRunes("C Columns", []int{0, 0}, styles.CommandLabelTrigger, styles.CommandLabel))
+	sections = append(sections, lipgloss.StyleRunes("E Edit", []int{0, 0}, styles.CommandLabelTrigger, styles.CommandLabel))
 	sections = append(sections, lipgloss.JoinHorizontal(
 		lipgloss.Top,
 		styles.CommandLabelTrigger.Render("X "),
@@ -107,7 +105,7 @@ func (m *Model) View() string {
 	sections = append(sections, lipgloss.JoinHorizontal(
 		lipgloss.Top,
 		styles.CommandLabelTrigger.Render("W "),
-		styles.CommandLabel.Render("Write file (Y/N)"),
+		styles.CommandLabel.Render("Write file"),
 	))
 	if selectionInfo != "" {
 		sections = append(sections, selectionInfo)
