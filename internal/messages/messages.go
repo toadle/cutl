@@ -30,3 +30,13 @@ type InputFileWriteError struct {
 type SortByColumn struct {
 	ColumnIndex int
 }
+
+type EditApplied struct {
+	SingleMode bool
+	Lines      []int
+	Values     map[string]string
+}
+
+type EditApplyError struct {
+	Error error
+}

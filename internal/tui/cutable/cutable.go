@@ -5,6 +5,7 @@ import (
 	"cutl/internal/messages"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/table"
@@ -265,6 +266,14 @@ func (m *Model) FilteredRows() int {
 
 func (m *Model) MarkedCount() int {
 	return len(m.marked)
+}
+
+func (m *Model) MarkedLines() []int {
+	lines := make([]int, 0, len(m.marked))
+	for line := range m.marked {
+		lines = append(lines, line)
+	}
+	return lines
 }
 
 func (m *Model) SelectedOriginalLine() int {
@@ -621,4 +630,127 @@ func parseNumber(s string) (float64, error) {
 		return 0, err
 	}
 	return result, nil
+}
+
+func (m *Model) UpdateEntries(targetLines []int, values map[string]string, singleMode bool) error {
+	updatedCount := 0
+	
+	if singleMode && len(targetLines) == 1 {
+		// Update single entry
+		targetLine := targetLines[0]
+		for i := range m.rawEntries {
+			if m.rawEntries[i].Line == targetLine {
+				if err := m.updateEntryData(&m.rawEntries[i], values); err != nil {
+					return err
+				}
+				updatedCount++
+				break
+			}
+		}
+	} else {
+		// Update multiple entries
+		for _, targetLine := range targetLines {
+			for i := range m.rawEntries {
+				if m.rawEntries[i].Line == targetLine {
+					// Only update non-empty values for multi-line edit
+					nonEmptyValues := make(map[string]string)
+					for col, val := range values {
+						if strings.TrimSpace(val) != "" {
+							nonEmptyValues[col] = val
+						}
+					}
+					if err := m.updateEntryData(&m.rawEntries[i], nonEmptyValues); err != nil {
+						return err
+					}
+					updatedCount++
+					break
+				}
+			}
+		}
+	}
+
+	log.Debugf("UpdateEntries: Updated %d entries out of %d targets", updatedCount, len(targetLines))
+
+	// Rebuild the table to reflect changes
+	m.rebuildTable()
+	return nil
+}
+
+func (m *Model) updateEntryData(entry *editor.Entry, values map[string]string) error {
+	// entry.Data is of type any, so we need to cast it to map[string]interface{}
+	dataMap, ok := entry.Data.(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("entry data is not a map")
+	}
+
+	log.Debugf("updateEntryData: Updating entry line %d with %d values", entry.Line, len(values))
+
+	// Create a copy of the data to modify
+	data := make(map[string]interface{})
+	for k, v := range dataMap {
+		data[k] = v
+	}
+
+	// Apply the updates using jq-like path setting
+	for column, value := range values {
+		log.Debugf("updateEntryData: Setting %s = %s", column, value)
+		if err := m.setValueAtPath(data, column, value); err != nil {
+			return fmt.Errorf("failed to set value for column %s: %w", column, err)
+		}
+	}
+
+	entry.Data = data
+	log.Debugf("updateEntryData: Successfully updated entry line %d", entry.Line)
+	return nil
+}
+
+func (m *Model) setValueAtPath(data map[string]interface{}, path, value string) error {
+	// Simple implementation for basic JSON paths
+	// This handles simple property access like ".name", ".age", etc.
+
+	if !strings.HasPrefix(path, ".") {
+		return fmt.Errorf("path must start with '.'")
+	}
+
+	key := strings.TrimPrefix(path, ".")
+
+	// Handle nested paths by splitting on dots
+	parts := strings.Split(key, ".")
+	current := data
+
+	// Navigate to the parent of the target field
+	for i, part := range parts[:len(parts)-1] {
+		if current[part] == nil {
+			current[part] = make(map[string]interface{})
+		}
+
+		nested, ok := current[part].(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("cannot navigate through non-object at part %d (%s)", i, part)
+		}
+		current = nested
+	}
+
+	finalKey := parts[len(parts)-1]
+
+	// Try to parse as different types
+	if value == "" {
+		current[finalKey] = nil
+	} else if value == "true" {
+		current[finalKey] = true
+	} else if value == "false" {
+		current[finalKey] = false
+	} else if num, err := strconv.ParseFloat(value, 64); err == nil {
+		// Check if it's actually an integer
+		if num == float64(int64(num)) {
+			current[finalKey] = int64(num)
+		} else {
+			current[finalKey] = num
+		}
+	} else {
+		// Default to string
+		current[finalKey] = value
+	}
+
+	return nil
 }

@@ -11,10 +11,12 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/log"
+	"github.com/itchyny/gojq"
 )
 
 type viewState int
@@ -24,6 +26,7 @@ const (
 	columnInputView
 	filterInputView
 	detailView
+	editView
 )
 
 type Model struct {
@@ -41,6 +44,11 @@ type Model struct {
 	pendingWriteCmd         tea.Cmd
 	statusMessage           string
 	clearStatusOnNextAction bool
+
+	// Edit view fields
+	editInputs      []textinput.Model
+	editSingleMode  bool
+	editTargetLines []int
 }
 
 func New(jsonlPath string) *Model {
@@ -119,6 +127,10 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.updateDetailContent(entry, true)
 					return m, nil
 				}
+			case "e", "E":
+				skipTableUpdate = true
+				m.initializeEditView()
+				return m, nil
 			case " ":
 				skipTableUpdate = true
 				m.table.ToggleMarkSelected()
@@ -192,6 +204,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "esc", "d", "D":
 				m.state = tableView
 				return m, nil
+			case "e", "E":
+				m.initializeEditView()
+				return m, nil
 			case " ":
 				m.table.ToggleMarkSelected()
 			case "x", "X":
@@ -218,6 +233,26 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "ctrl+c", "q":
 				return m, tea.Quit
 			}
+		case editView:
+			skipTableUpdate = true
+			switch key {
+			case "esc":
+				m.state = tableView
+				return m, nil
+			case "enter":
+				skipTableUpdate = true
+				log.Debugf("Edit view: Enter pressed, applying edits")
+				cmds = append(cmds, m.applyEdits())
+				m.state = tableView
+			case "tab":
+				m.focusNextEditInput()
+				return m, nil
+			case "shift+tab":
+				m.focusPrevEditInput()
+				return m, nil
+			case "ctrl+c", "q":
+				return m, tea.Quit
+			}
 		}
 
 	case tea.WindowSizeMsg:
@@ -233,11 +268,28 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case messages.InputFileWriteError:
 		log.Errorf("Failed to write JSONL file %s: %v", m.jsonlPath, msg.Error)
 		m.setStatusMessage(fmt.Sprintf("Save failed: %v", msg.Error), true)
+	case messages.EditApplied:
+		log.Debugf("EditApplied message received")
+		if msg.SingleMode {
+			m.setStatusMessage("Entry updated", true)
+		} else {
+			m.setStatusMessage(fmt.Sprintf("Updated %d entries", len(msg.Lines)), true)
+		}
+	case messages.EditApplyError:
+		log.Errorf("Failed to apply edits: %v", msg.Error)
+		m.setStatusMessage(fmt.Sprintf("Edit failed: %v", msg.Error), true)
 	}
 
 	if !skipTableUpdate && (m.state == tableView || m.state == detailView) {
 		m.table, cmd = m.table.Update(msg)
 		cmds = append(cmds, cmd)
+	}
+
+	if m.state == editView {
+		for i := range m.editInputs {
+			m.editInputs[i], cmd = m.editInputs[i].Update(msg)
+			cmds = append(cmds, cmd)
+		}
 	}
 
 	if m.state == detailView {
@@ -296,6 +348,8 @@ func (m *Model) View() string {
 
 	if m.state == detailView {
 		sections = append(sections, m.renderDetailView())
+	} else if m.state == editView {
+		sections = append(sections, m.renderEditView())
 	} else {
 		sections = append(sections, m.table.View())
 	}
@@ -386,5 +440,172 @@ func (m *Model) writeTableToFileCmd() tea.Cmd {
 			return messages.InputFileWriteError{Error: err}
 		}
 		return messages.InputFileWritten{Path: m.jsonlPath, Count: len(entries)}
+	}
+}
+
+func (m *Model) initializeEditView() {
+	columns := m.table.ColumnQueries()
+	if len(columns) == 0 {
+		return
+	}
+
+	markedCount := m.table.MarkedCount()
+	if markedCount > 0 {
+		// Multi-line edit mode
+		m.editSingleMode = false
+		m.editTargetLines = m.getMarkedLines()
+	} else {
+		// Single line edit mode
+		m.editSingleMode = true
+		if entry := m.table.SelectedEntry(); entry != nil {
+			m.editTargetLines = []int{entry.Line}
+		} else {
+			return
+		}
+	}
+
+	// Create text inputs for each column
+	m.editInputs = make([]textinput.Model, len(columns))
+	for i, col := range columns {
+		input := textinput.New()
+		input.Placeholder = fmt.Sprintf("Enter value for %s", col)
+		input.CharLimit = 500
+		input.Width = 50
+
+		// Pre-fill for single line edit
+		if m.editSingleMode && len(m.editTargetLines) > 0 {
+			if entry := m.table.SelectedEntry(); entry != nil {
+				if value := m.extractColumnValue(entry, col); value != "" {
+					input.SetValue(value)
+				}
+			}
+		}
+
+		if i == 0 {
+			input.Focus()
+		}
+		m.editInputs[i] = input
+	}
+
+	m.state = editView
+}
+
+func (m *Model) getMarkedLines() []int {
+	return m.table.MarkedLines()
+}
+
+func (m *Model) extractColumnValue(entry *editor.Entry, columnQuery string) string {
+	// Use jq to extract the value from the entry
+	query, err := gojq.Parse(columnQuery)
+	if err != nil {
+		return ""
+	}
+
+	iter := query.Run(entry.Data)
+	v, ok := iter.Next()
+	if !ok {
+		return ""
+	}
+	if _, isErr := v.(error); isErr {
+		return ""
+	}
+
+	return fmt.Sprintf("%v", v)
+}
+
+func (m *Model) focusNextEditInput() {
+	for i, input := range m.editInputs {
+		if input.Focused() {
+			input.Blur()
+			m.editInputs[i] = input
+
+			nextIdx := (i + 1) % len(m.editInputs)
+			m.editInputs[nextIdx].Focus()
+			break
+		}
+	}
+}
+
+func (m *Model) focusPrevEditInput() {
+	for i, input := range m.editInputs {
+		if input.Focused() {
+			input.Blur()
+			m.editInputs[i] = input
+
+			prevIdx := (i - 1 + len(m.editInputs)) % len(m.editInputs)
+			m.editInputs[prevIdx].Focus()
+			break
+		}
+	}
+}
+
+func (m *Model) renderEditView() string {
+	columns := m.table.ColumnQueries()
+	if len(columns) == 0 || len(m.editInputs) == 0 {
+		return styles.Text.Render("No columns to edit")
+	}
+
+	var title string
+	if m.editSingleMode {
+		title = fmt.Sprintf("Edit Single Entry (Line %d)", m.editTargetLines[0])
+	} else {
+		title = fmt.Sprintf("Edit Multiple Entries (%d lines)", len(m.editTargetLines))
+	}
+
+	sections := []string{
+		styles.InfoLabel.Render(title),
+		"",
+	}
+
+	for i, col := range columns {
+		if i < len(m.editInputs) {
+			sections = append(sections,
+				fmt.Sprintf("%s:", col),
+				m.editInputs[i].View(),
+				"",
+			)
+		}
+	}
+
+	sections = append(sections,
+		styles.InfoLabel.Render("Press Enter to save, ESC to cancel, Tab/Shift+Tab to navigate"),
+	)
+
+	return strings.Join(sections, "\n")
+}
+
+func (m *Model) applyEdits() tea.Cmd {
+	return func() tea.Msg {
+		log.Debugf("applyEdits: Starting to apply edits")
+		columns := m.table.ColumnQueries()
+		log.Debugf("applyEdits: Using %d columns", len(columns))
+
+		// Get the values from inputs
+		values := make(map[string]string)
+		for i, col := range columns {
+			if i < len(m.editInputs) {
+				value := strings.TrimSpace(m.editInputs[i].Value())
+				if value != "" || m.editSingleMode {
+					values[col] = value
+					log.Debugf("applyEdits: Adding value %s = %s", col, value)
+				}
+			}
+		}
+
+		log.Debugf("applyEdits: Calling UpdateEntries with %d target lines, %d values, singleMode=%t", 
+			len(m.editTargetLines), len(values), m.editSingleMode)
+
+		// Apply changes to the table data
+		if err := m.table.UpdateEntries(m.editTargetLines, values, m.editSingleMode); err != nil {
+			log.Errorf("applyEdits: UpdateEntries failed: %v", err)
+			return messages.EditApplyError{Error: err}
+		}
+
+		log.Debugf("applyEdits: Successfully applied edits")
+		return messages.EditApplied{
+			SingleMode: m.editSingleMode,
+			Lines:      m.editTargetLines,
+			Values:     values,
+		}
 	}
 }
