@@ -166,6 +166,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					skipTableUpdate = true
 					m.table.ClearMarks()
 				}
+			case "ctrl+a":
+				markedCount := m.table.MarkAllVisible()
+				if markedCount > 0 {
+					m.setStatusMessage(fmt.Sprintf("Marked %d visible entries", markedCount), true)
+				} else {
+					m.setStatusMessage("All visible entries already marked", true)
+				}
 			case "1", "2", "3", "4", "5", "6", "7", "8", "9":
 				skipTableUpdate = true
 				if columnIndex := int(key[0] - '1'); columnIndex < len(m.table.ColumnQueries()) {
@@ -249,6 +256,13 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			case "w", "W":
 				m.requestWriteConfirmation()
+			case "ctrl+a":
+				markedCount := m.table.MarkAllVisible()
+				if markedCount > 0 {
+					m.setStatusMessage(fmt.Sprintf("Marked %d visible entries", markedCount), true)
+				} else {
+					m.setStatusMessage("All visible entries already marked", true)
+				}
 			case "1", "2", "3", "4", "5", "6", "7", "8", "9":
 				if columnIndex := int(key[0] - '1'); columnIndex < len(m.table.ColumnQueries()) {
 					cmds = append(cmds, func() tea.Msg {

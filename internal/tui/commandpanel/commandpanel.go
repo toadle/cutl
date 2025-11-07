@@ -168,8 +168,13 @@ func (m *Model) layoutWithMeta(left, meta string) string {
 	rightStyle := lipgloss.NewStyle().Align(lipgloss.Right)
 
 	if m.width > 0 {
-		leftWidth := (m.width - 8) / 2
-		rightWidth := (m.width - 8) - leftWidth
+		// Begrenzen der rechten Anzeige auf maximal 50 Zeichen
+		maxRightWidth := 50
+		rightWidth := maxRightWidth
+		if m.width-8 < maxRightWidth {
+			rightWidth = m.width - 8
+		}
+		leftWidth := (m.width - 8) - rightWidth
 		leftStyle = leftStyle.Width(leftWidth)
 		rightStyle = rightStyle.Width(rightWidth)
 	}

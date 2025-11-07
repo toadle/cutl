@@ -293,6 +293,27 @@ func (m *Model) SetColumnQueries(queries []string) {
 	log.Debugf("Set column queries: %v", queries)
 }
 
+func (m *Model) MarkAllVisible() int {
+	if m.marked == nil {
+		m.marked = make(map[int]struct{})
+	}
+
+	markedCount := 0
+	for _, entry := range m.filteredEntries {
+		if _, exists := m.marked[entry.Line]; !exists {
+			m.marked[entry.Line] = struct{}{}
+			markedCount++
+		}
+	}
+
+	log.Debugf("Marked %d visible entries out of %d total filtered entries", markedCount, len(m.filteredEntries))
+	
+	// Rebuild table to show the markers
+	m.rebuildTable()
+	
+	return markedCount
+}
+
 func (m *Model) SelectedOriginalLine() int {
 	if len(m.filteredEntries) == 0 {
 		return 0
