@@ -306,7 +306,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.setStatusMessage(fmt.Sprintf("Saved: %s (%d rows)", filename, msg.Count), true)
 	case messages.InputFileWriteError:
 		log.Errorf("Failed to write JSONL file %s: %v", m.jsonlPath, msg.Error)
-		m.setStatusMessage(fmt.Sprintf("Save failed: %v", msg.Error), true)
+		m.setStatusErrorMessage(fmt.Sprintf("Save failed: %v", msg.Error), true)
 	case messages.EditApplied:
 		log.Debugf("EditApplied message received")
 		if msg.SingleMode {
@@ -316,7 +316,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case messages.EditApplyError:
 		log.Errorf("Failed to apply edits: %v", msg.Error)
-		m.setStatusMessage(fmt.Sprintf("Edit failed: %v", msg.Error), true)
+		m.setStatusErrorMessage(fmt.Sprintf("Edit failed: %v", msg.Error), true)
+	case messages.FilterQueryError:
+		log.Errorf("Filter query error: %v", msg.Error)
+		m.setStatusErrorMessage(fmt.Sprintf("%v", msg.Error), true)
+	case messages.InputFileLoaded:
+		filename := filepath.Base(m.jsonlPath)
+		if filename == "" {
+			filename = m.jsonlPath
+		}
+		m.setStatusNeutralMessage(fmt.Sprintf("%s (%d rows)", filename, len(msg.Content)), false)
 	}
 
 	if !skipTableUpdate && (m.state == tableView || m.state == detailView) {
@@ -450,6 +459,18 @@ func (m *Model) setStatusMessage(message string, clearOnNext bool) {
 	m.statusMessage = message
 	m.clearStatusOnNextAction = clearOnNext
 	m.commandPanel.SetStatus(message)
+}
+
+func (m *Model) setStatusErrorMessage(message string, clearOnNext bool) {
+	m.statusMessage = message
+	m.clearStatusOnNextAction = clearOnNext
+	m.commandPanel.SetStatusError(message)
+}
+
+func (m *Model) setStatusNeutralMessage(message string, clearOnNext bool) {
+	m.statusMessage = message
+	m.clearStatusOnNextAction = clearOnNext
+	m.commandPanel.SetStatusNeutral(message)
 }
 
 func (m *Model) clearStatusMessage() {

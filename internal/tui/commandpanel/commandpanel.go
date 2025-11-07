@@ -20,6 +20,8 @@ type Model struct {
 	filterActive  bool
 	markedCount   int
 	statusMessage string
+	isStatusError bool
+	isStatusNeutral bool
 }
 
 func (m *Model) Init() tea.Cmd {
@@ -64,6 +66,20 @@ func (m *Model) SetMeta(totalRows, filteredRows, currentLine, markedCount int, f
 
 func (m *Model) SetStatus(message string) {
 	m.statusMessage = message
+	m.isStatusError = false
+	m.isStatusNeutral = false
+}
+
+func (m *Model) SetStatusError(message string) {
+	m.statusMessage = message
+	m.isStatusError = true
+	m.isStatusNeutral = false
+}
+
+func (m *Model) SetStatusNeutral(message string) {
+	m.statusMessage = message
+	m.isStatusError = false
+	m.isStatusNeutral = true
 }
 
 func (m *Model) Update(msg tea.Msg) (Model, tea.Cmd) {
@@ -145,7 +161,14 @@ func (m *Model) appendStatus(content string) string {
 		return content
 	}
 
-	status := styles.CommandStatus.Render(m.statusMessage)
+	var status string
+	if m.isStatusError {
+		status = styles.CommandStatusError.Render(m.statusMessage)
+	} else if m.isStatusNeutral {
+		status = styles.CommandStatusNeutral.Render(m.statusMessage)
+	} else {
+		status = styles.CommandStatus.Render(m.statusMessage)
+	}
 	return lipgloss.JoinVertical(lipgloss.Left, content, status)
 }
 

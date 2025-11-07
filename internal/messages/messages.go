@@ -10,6 +10,11 @@ type FilterQueryChanged struct {
 	Query string
 }
 
+type FilterQueryError struct {
+	Error error
+	Query string
+}
+
 type InputFileLoaded struct {
 	Content []editor.Entry
 }

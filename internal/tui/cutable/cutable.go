@@ -54,7 +54,7 @@ func New() Model {
 	return m
 }
 
-func (m *Model) Update(msg tea.Msg) (Model, tea.Cmd) {
+func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -65,7 +65,9 @@ func (m *Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.rebuildTable()
 	case messages.FilterQueryChanged:
 		m.filterQuery = msg.Query
-		m.rebuildTable()
+		if cmd := m.rebuildTableWithFilterCheck(); cmd != nil {
+			return m, cmd
+		}
 	case messages.SortByColumn:
 		if msg.ColumnIndex == m.sortColumn {
 			m.sortAscending = !m.sortAscending
@@ -92,7 +94,7 @@ func (m *Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 	m.table, msg = m.table.Update(msg)
 
-	return *m, nil
+	return m, nil
 }
 
 func (m *Model) rebuildTable() {
@@ -101,6 +103,133 @@ func (m *Model) rebuildTable() {
 
 func (m *Model) rebuildTableWithSort() {
 	m.rebuildTableInternal(false)
+}
+
+func (m *Model) rebuildTableWithFilterCheck() tea.Cmd {
+	err := m.rebuildTableInternalWithErrorCheck(true)
+	if err != nil {
+		return func() tea.Msg {
+			return messages.FilterQueryError{
+				Error: err,
+				Query: m.filterQuery,
+			}
+		}
+	}
+	return nil
+}
+
+func (m *Model) rebuildTableInternalWithErrorCheck(preserveSelection bool) error {
+	selectedLine := -1
+	if preserveSelection && len(m.filteredEntries) > 0 {
+		if line := m.SelectedOriginalLine(); line > 0 {
+			selectedLine = line
+		}
+	}
+
+	showMarker := len(m.marked) > 0
+
+	columns := make([]table.Column, 0, len(m.columnQueries)+1)
+	if showMarker {
+		columns = append(columns, table.Column{Title: "●", Width: 2})
+	}
+	for i, q := range m.columnQueries {
+		title := q
+		if m.sortColumn == i {
+			if m.sortAscending {
+				title = q + " ↑"
+			} else {
+				title = q + " ↓"
+			}
+		}
+		columns = append(columns, table.Column{Title: title, Width: 10})
+	}
+
+	m.filteredEntries = m.rawEntries
+	if m.filterQuery != "" {
+		filterStr := fmt.Sprintf("select(%s)", m.filterQuery)
+		query, err := gojq.Parse(filterStr)
+		if err != nil {
+			log.Errorf("Error parsing filter query '%s': %v", filterStr, err)
+			return fmt.Errorf("filter query parse error: %v", err)
+		}
+		
+		var (
+			filtered []editor.Entry
+		)
+		for _, entry := range m.rawEntries {
+			iter := query.Run(entry.Data)
+			v, ok := iter.Next()
+			if !ok {
+				continue
+			}
+			if execErr, isErr := v.(error); isErr {
+				log.Errorf("Error executing filter query '%s': %v", filterStr, execErr)
+				return fmt.Errorf("filter query execution error: %v", execErr)
+			}
+			filtered = append(filtered, entry)
+		}
+		m.filteredEntries = filtered
+	}
+
+	// Sort entries if a sort column is specified
+	if m.sortColumn >= 0 && m.sortColumn < len(m.columnQueries) {
+		m.sortEntries()
+	}
+
+	var (
+		rows      []table.Row
+		cursorPos = -1
+	)
+
+	for idx, entry := range m.filteredEntries {
+		row := make([]string, 0, len(columns))
+		if showMarker {
+			row = append(row, m.markerSymbol(entry.Line))
+		}
+
+		for _, col := range m.columnQueries {
+			query, err := gojq.Parse(col)
+			if err != nil {
+				log.Errorf("Error parsing jq query '%s': %v", col, err)
+				row = append(row, "ERR:PARSE")
+				continue
+			}
+			iter := query.Run(entry.Data)
+			v, ok := iter.Next()
+			if !ok {
+				row = append(row, "")
+				continue
+			}
+			if execErr, isErr := v.(error); isErr {
+				log.Errorf("Error executing jq query '%s': %v", col, execErr)
+				row = append(row, "ERR:EXEC")
+				continue
+			}
+			var colValue string
+			if str, isString := v.(string); isString {
+				colValue = str
+			} else if v != nil {
+				colValue = fmt.Sprintf("%v", v)
+			}
+			row = append(row, colValue)
+		}
+
+		if selectedLine > 0 && entry.Line == selectedLine {
+			cursorPos = idx
+		}
+
+		rows = append(rows, row)
+	}
+
+	m.table.SetColumns(columns)
+	m.table.SetRows(rows)
+	m.updateColumnWidths()
+
+	if cursorPos >= 0 && cursorPos < len(rows) {
+		m.table.SetCursor(cursorPos)
+	}
+
+	return nil
 }
 
 func (m *Model) rebuildTableInternal(preserveSelection bool) {

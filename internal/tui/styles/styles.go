@@ -50,6 +50,8 @@ var (
 	CommandSelectionLabelTrigger = CommandLabelTrigger.Foreground(indigo).Bold(true)
 	CommandMeta                  = Label.Foreground(midGray).MarginLeft(2)
 	CommandStatus                = Label.Foreground(semiDimGreen).MarginTop(1)
+	CommandStatusError           = Label.Foreground(red).MarginTop(1)
+	CommandStatusNeutral         = Label.Foreground(midGray).MarginTop(1)
 
 	Text      = lipgloss.NewStyle().Foreground(normal)
 	InfoLabel = Label.Foreground(darkGray)
