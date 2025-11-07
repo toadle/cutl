@@ -3,6 +3,7 @@ package cutable
 import (
 	"cutl/internal/editor"
 	"cutl/internal/messages"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strconv"
@@ -197,6 +198,13 @@ func (m *Model) rebuildTableInternal(preserveSelection bool) {
 				switch v := v.(type) {
 				case float64:
 					val = fmt.Sprintf("%.0f", v)
+				case []interface{}, map[string]interface{}:
+					// For arrays and objects, display as JSON string
+					if jsonBytes, err := json.Marshal(v); err == nil {
+						val = string(jsonBytes)
+					} else {
+						val = fmt.Sprintf("%v", v)
+					}
 				default:
 					val = fmt.Sprintf("%v", v)
 				}
@@ -756,10 +764,26 @@ func (m *Model) setValueAtPath(data map[string]interface{}, path, value string) 
 		} else {
 			current[finalKey] = num
 		}
+	} else if m.looksLikeJSON(value) {
+		// Try to parse as JSON (for arrays and objects)
+		var jsonValue interface{}
+		if err := json.Unmarshal([]byte(value), &jsonValue); err == nil {
+			current[finalKey] = jsonValue
+			log.Debugf("Parsed JSON value for %s: %v", finalKey, jsonValue)
+		} else {
+			// If JSON parsing fails, treat as string
+			current[finalKey] = value
+		}
 	} else {
 		// Default to string
 		current[finalKey] = value
 	}
 
 	return nil
+}
+
+func (m *Model) looksLikeJSON(value string) bool {
+	value = strings.TrimSpace(value)
+	return (strings.HasPrefix(value, "[") && strings.HasSuffix(value, "]")) ||
+		   (strings.HasPrefix(value, "{") && strings.HasSuffix(value, "}"))
 }

@@ -535,7 +535,17 @@ func (m *Model) extractColumnValue(entry *editor.Entry, columnQuery string) stri
 		return ""
 	}
 
-	return fmt.Sprintf("%v", v)
+	// For arrays and objects, return JSON representation
+	switch val := v.(type) {
+	case []interface{}, map[string]interface{}:
+		jsonBytes, err := json.Marshal(val)
+		if err != nil {
+			return fmt.Sprintf("%v", v)
+		}
+		return string(jsonBytes)
+	default:
+		return fmt.Sprintf("%v", v)
+	}
 }
 
 func (m *Model) focusNextEditInput() {
