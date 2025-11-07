@@ -206,9 +206,17 @@ func (m *Model) rebuildTableInternalWithErrorCheck(preserveSelection bool) error
 				continue
 			}
 			var colValue string
-			if str, isString := v.(string); isString {
-				colValue = str
-			} else if v != nil {
+			switch v := v.(type) {
+			case float64:
+				colValue = fmt.Sprintf("%.0f", v)
+			case []interface{}, map[string]interface{}:
+				// For arrays and objects, display as JSON string
+				if jsonBytes, err := json.Marshal(v); err == nil {
+					colValue = string(jsonBytes)
+				} else {
+					colValue = fmt.Sprintf("%v", v)
+				}
+			default:
 				colValue = fmt.Sprintf("%v", v)
 			}
 			row = append(row, colValue)
