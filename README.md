@@ -1,6 +1,7 @@
 # CUTL - Command Line JSONL Editor
 
 A powerful Terminal User Interface (TUI) application for viewing, filtering, editing, and manipulating JSONL (JSON Lines) files.
+The use-case in mind is to work on NLP datasets stored in JSONL format, but CUTL can be used for any JSONL data.
 
 ## Features
 
