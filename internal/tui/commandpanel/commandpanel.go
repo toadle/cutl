@@ -115,6 +115,21 @@ func (m *Model) View() string {
 	sections = append(sections, lipgloss.StyleRunes("E Edit", []int{0, 0}, styles.CommandLabelTrigger, styles.CommandLabel))
 	sections = append(sections, lipgloss.JoinHorizontal(
 		lipgloss.Top,
+		styles.CommandLabelTrigger.Render("SPACE "),
+		styles.CommandLabel.Render("Mark Single"),
+	))
+	sections = append(sections, lipgloss.JoinHorizontal(
+		lipgloss.Top,
+		styles.CommandLabelTrigger.Render("M "),
+		styles.CommandLabel.Render("Filter Marked"),
+	))
+	sections = append(sections, lipgloss.JoinHorizontal(
+		lipgloss.Top,
+		styles.CommandLabelTrigger.Render("Ctrl+A "),
+		styles.CommandLabel.Render("Select all"),
+	))
+	sections = append(sections, lipgloss.JoinHorizontal(
+		lipgloss.Top,
 		styles.CommandLabelTrigger.Render("X "),
 		styles.CommandLabel.Render("Delete"),
 	))

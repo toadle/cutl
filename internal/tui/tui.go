@@ -151,7 +151,24 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			case " ":
 				skipTableUpdate = true
-				m.table.ToggleMarkSelected()
+				m.table.ToggleMarkSelectedAndMoveDown()
+			case "m", "M":
+				skipTableUpdate = true
+				if m.table.MarkedCount() > 0 {
+					var filter string
+					if m.table.IsCurrentFilterMarkedOnly() {
+						// If current filter is "marked only", clear it
+						filter = ""
+					} else {
+						// Set filter to show only marked entries
+						filter = m.table.GenerateMarkedOnlyFilter()
+					}
+					return m, func() tea.Msg {
+						return messages.FilterQueryChanged{
+							Query: filter,
+						}
+					}
+				}
 			case "x", "X":
 				skipTableUpdate = true
 				removed := m.table.DeleteMarkedOrSelected()
@@ -240,7 +257,23 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.initializeEditView()
 				return m, nil
 			case " ":
-				m.table.ToggleMarkSelected()
+				m.table.ToggleMarkSelectedAndMoveDown()
+			case "m", "M":
+				if m.table.MarkedCount() > 0 {
+					var filter string
+					if m.table.IsCurrentFilterMarkedOnly() {
+						// If current filter is "marked only", clear it
+						filter = ""
+					} else {
+						// Set filter to show only marked entries
+						filter = m.table.GenerateMarkedOnlyFilter()
+					}
+					cmds = append(cmds, func() tea.Msg {
+						return messages.FilterQueryChanged{
+							Query: filter,
+						}
+					})
+				}
 			case "x", "X":
 				removed := m.table.DeleteMarkedOrSelected()
 				if removed > 0 {

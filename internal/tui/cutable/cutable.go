@@ -146,29 +146,42 @@ func (m *Model) rebuildTableInternalWithErrorCheck(preserveSelection bool) error
 
 	m.filteredEntries = m.rawEntries
 	if m.filterQuery != "" {
-		filterStr := fmt.Sprintf("select(%s)", m.filterQuery)
-		query, err := gojq.Parse(filterStr)
-		if err != nil {
-			log.Errorf("Error parsing filter query '%s': %v", filterStr, err)
-			return fmt.Errorf("filter query parse error: %v", err)
-		}
-		
-		var (
-			filtered []editor.Entry
-		)
-		for _, entry := range m.rawEntries {
-			iter := query.Run(entry.Data)
-			v, ok := iter.Next()
-			if !ok {
-				continue
+		// Check if this is a special "marked only" filter
+		if m.isMarkedOnlyFilter(m.filterQuery) {
+			// Apply marked-only filter directly
+			var filtered []editor.Entry
+			for _, entry := range m.rawEntries {
+				if _, isMarked := m.marked[entry.Line]; isMarked {
+					filtered = append(filtered, entry)
+				}
 			}
-			if execErr, isErr := v.(error); isErr {
-				log.Errorf("Error executing filter query '%s': %v", filterStr, execErr)
-				return fmt.Errorf("filter query execution error: %v", execErr)
+			m.filteredEntries = filtered
+		} else {
+			// Apply regular jq filter
+			filterStr := fmt.Sprintf("select(%s)", m.filterQuery)
+			query, err := gojq.Parse(filterStr)
+			if err != nil {
+				log.Errorf("Error parsing filter query '%s': %v", filterStr, err)
+				return fmt.Errorf("filter query parse error: %v", err)
 			}
-			filtered = append(filtered, entry)
+			
+			var (
+				filtered []editor.Entry
+			)
+			for _, entry := range m.rawEntries {
+				iter := query.Run(entry.Data)
+				v, ok := iter.Next()
+				if !ok {
+					continue
+				}
+				if execErr, isErr := v.(error); isErr {
+					log.Errorf("Error executing filter query '%s': %v", filterStr, execErr)
+					return fmt.Errorf("filter query execution error: %v", execErr)
+				}
+				filtered = append(filtered, entry)
+			}
+			m.filteredEntries = filtered
 		}
-		m.filteredEntries = filtered
 	}
 
 	// Sort entries if a sort column is specified
@@ -268,33 +281,46 @@ func (m *Model) rebuildTableInternal(preserveSelection bool) {
 
 	m.filteredEntries = m.rawEntries
 	if m.filterQuery != "" {
-		filterStr := fmt.Sprintf("select(%s)", m.filterQuery)
-		query, err := gojq.Parse(filterStr)
-		if err != nil {
-			log.Errorf("Error parsing filter query '%s': %v", filterStr, err)
-			m.filteredEntries = m.rawEntries
-		} else {
-			var (
-				filtered []editor.Entry
-				hadError bool
-			)
+		// Check if this is a special "marked only" filter
+		if m.isMarkedOnlyFilter(m.filterQuery) {
+			// Apply marked-only filter directly
+			var filtered []editor.Entry
 			for _, entry := range m.rawEntries {
-				iter := query.Run(entry.Data)
-				v, ok := iter.Next()
-				if !ok {
-					continue
+				if _, isMarked := m.marked[entry.Line]; isMarked {
+					filtered = append(filtered, entry)
 				}
-				if execErr, isErr := v.(error); isErr {
-					log.Errorf("Error executing filter query '%s': %v", filterStr, execErr)
-					hadError = true
-					break
-				}
-				filtered = append(filtered, entry)
 			}
-			if hadError {
+			m.filteredEntries = filtered
+		} else {
+			// Apply regular jq filter
+			filterStr := fmt.Sprintf("select(%s)", m.filterQuery)
+			query, err := gojq.Parse(filterStr)
+			if err != nil {
+				log.Errorf("Error parsing filter query '%s': %v", filterStr, err)
 				m.filteredEntries = m.rawEntries
 			} else {
-				m.filteredEntries = filtered
+				var (
+					filtered []editor.Entry
+					hadError bool
+				)
+				for _, entry := range m.rawEntries {
+					iter := query.Run(entry.Data)
+					v, ok := iter.Next()
+					if !ok {
+						continue
+					}
+					if execErr, isErr := v.(error); isErr {
+						log.Errorf("Error executing filter query '%s': %v", filterStr, execErr)
+						hadError = true
+						break
+					}
+					filtered = append(filtered, entry)
+				}
+				if hadError {
+					m.filteredEntries = m.rawEntries
+				} else {
+					m.filteredEntries = filtered
+				}
 			}
 		}
 	}
@@ -422,7 +448,25 @@ func (m *Model) MarkedLines() []int {
 	for line := range m.marked {
 		lines = append(lines, line)
 	}
+	sort.Ints(lines)
 	return lines
+}
+
+func (m *Model) GenerateMarkedOnlyFilter() string {
+	if len(m.marked) == 0 {
+		return ""
+	}
+	
+	// Use a special filter format that we can recognize internally
+	return "__MARKED_ONLY__"
+}
+
+func (m *Model) isMarkedOnlyFilter(filter string) bool {
+	return filter == "__MARKED_ONLY__"
+}
+
+func (m *Model) IsCurrentFilterMarkedOnly() bool {
+	return m.isMarkedOnlyFilter(m.filterQuery)
 }
 
 func (m *Model) SetColumnQueries(queries []string) {
@@ -492,6 +536,31 @@ func (m *Model) ToggleMarkSelected() {
 		delete(m.marked, entry.Line)
 	} else {
 		m.marked[entry.Line] = struct{}{}
+	}
+
+	m.rebuildTable()
+}
+
+func (m *Model) ToggleMarkSelectedAndMoveDown() {
+	cursor := m.table.Cursor()
+	if cursor < 0 || cursor >= len(m.filteredEntries) {
+		return
+	}
+
+	entry := m.filteredEntries[cursor]
+	if m.marked == nil {
+		m.marked = make(map[int]struct{})
+	}
+
+	if _, ok := m.marked[entry.Line]; ok {
+		delete(m.marked, entry.Line)
+	} else {
+		m.marked[entry.Line] = struct{}{}
+	}
+
+	// Move cursor down if possible
+	if cursor < len(m.filteredEntries)-1 {
+		m.table.SetCursor(cursor + 1)
 	}
 
 	m.rebuildTable()
