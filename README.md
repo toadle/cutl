@@ -1,8 +1,13 @@
-# CUTL - Terminal JSONL Dataset Editor
 
-CUTL is a fast, interactive TUI tool to view, filter, and edit JSONL (JSON Lines) files – ideal for NLP and machine learning datasets, or any structured line-oriented data.
+<img width="200" alt="53C8B79A-E6B6-4B9E-B275-23913333D816" src="https://github.com/user-attachments/assets/cd05cd74-c77a-45b9-b0de-bf142a05206a" />
 
-Most CUTL operations—including filtering, column selection, and row manipulation—are powered by [jq](https://stedolan.github.io/jq/) selectors and syntax. Users familiar with jq will find expressive power for querying and editing structured data, and all filtering follows jq-compatible rules. For a primer, see the jq [manual](https://stedolan.github.io/jq/manual/).
+
+# cutl - Terminal JSONL Dataset Editor
+
+cutl is a fast, interactive TUI tool to view, filter, and edit JSONL (JSON Lines) files – ideal for NLP and machine learning datasets, or any structured line-oriented data.
+It's goal is to be pleasant to use. The primary intended use-case is to work in NLP dataset / corpus files that need to be refined, filtered or edited. (e.g. the ones created for https://spacy.io)
+
+Most cutl operations—including filtering, column selection, and row manipulation—are powered by [jq](https://stedolan.github.io/jq/) selectors and syntax. Users familiar with jq will find expressive power for querying and editing structured data, and all filtering follows jq-compatible rules. For a primer, see the jq [manual](https://stedolan.github.io/jq/manual/).
 
 ## Features
 
@@ -28,10 +33,9 @@ go build -o cutl
 
 ```bash
 ./cutl --input data.jsonl         # Open and edit
-diff data.jsonl data.jsonl.bak    # After save, compare your edits
 ```
 
-For keyboard shortcuts, see in-app help or [manual](MANUAL.md) if available.
+For keyboard shortcuts, see in-app help.
 
 ## Contributing
 
@@ -39,8 +43,4 @@ Pull requests are welcome. Please ensure new features include tests, follow Go c
 
 ## License
 
-Specify license file in repository root (e.g., MIT, Apache-2.0, etc.).
-
----
-
-For detailed usage and advanced features, refer to the full manual or in-app help.
+MIT
