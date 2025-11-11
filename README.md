@@ -2,7 +2,7 @@
 <img width="200" alt="53C8B79A-E6B6-4B9E-B275-23913333D816" src="https://github.com/user-attachments/assets/cd05cd74-c77a-45b9-b0de-bf142a05206a" />
 
 
-# cutl - Terminal JSONL Dataset Editor
+# cutl - Your friendly jq-based JSONL Dataset Editor
 
 cutl is a fast, interactive TUI tool to view, filter, and edit JSONL (JSON Lines) files – ideal for NLP and machine learning datasets, or any structured line-oriented data.
 It's goal is to be pleasant to use. The primary intended use-case is to work in NLP dataset / corpus files that need to be refined, filtered or edited. (e.g. the ones created for https://spacy.io)
