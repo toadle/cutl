@@ -56,10 +56,10 @@ func (m *Model) Value() string {
 	return m.textInput.Value()
 }
 
-func (m *Model) SetMeta(totalRows, filteredRows, currentLine, markedCount int, filterActive bool) {
+func (m *Model) SetMeta(totalRows, filteredRows, filteredPosition, markedCount int, filterActive bool) {
 	m.totalRows = totalRows
 	m.filteredRows = filteredRows
-	m.currentLine = currentLine
+	m.currentLine = filteredPosition
 	m.markedCount = markedCount
 	m.filterActive = filterActive
 }
@@ -153,22 +153,18 @@ func (m *Model) View() string {
 
 func (m *Model) metaContent() string {
 	current := "–"
+	total := m.filteredRows
+	if total == 0 {
+		total = m.totalRows
+	}
+	
 	if m.currentLine > 0 {
 		current = fmt.Sprintf("%d", m.currentLine)
 	}
 
-	base := fmt.Sprintf("%s / %d", current, m.totalRows)
+	base := fmt.Sprintf("%s / %d (%d total)", current, total, m.totalRows)
 
-	details := []string{}
-	if m.filterActive {
-		details = append(details, fmt.Sprintf("%d shown", m.filteredRows))
-	}
-
-	if len(details) == 0 {
-		return base
-	}
-
-	return fmt.Sprintf("%s (%s)", base, strings.Join(details, ", "))
+	return base
 }
 
 func (m *Model) appendStatus(content string) string {

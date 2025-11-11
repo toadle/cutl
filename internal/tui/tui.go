@@ -157,8 +157,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.table.MarkedCount() > 0 {
 					var filter string
 					if m.table.IsCurrentFilterMarkedOnly() {
-						// If current filter is "marked only", clear it
-						filter = ""
+						// If current filter is "marked only", restore original filter
+						filter = m.table.GetOriginalFilter()
 					} else {
 						// Set filter to show only marked entries
 						filter = m.table.GenerateMarkedOnlyFilter()
@@ -262,8 +262,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.table.MarkedCount() > 0 {
 					var filter string
 					if m.table.IsCurrentFilterMarkedOnly() {
-						// If current filter is "marked only", clear it
-						filter = ""
+						// If current filter is "marked only", restore original filter
+						filter = m.table.GetOriginalFilter()
 					} else {
 						// Set filter to show only marked entries
 						filter = m.table.GenerateMarkedOnlyFilter()
@@ -336,7 +336,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if filename == "" {
 			filename = msg.Path
 		}
-		m.setStatusMessage(fmt.Sprintf("Saved: %s (%d rows)", filename, msg.Count), true)
+		m.setStatusMessage(fmt.Sprintf("Saved: %s", filename), true)
 	case messages.InputFileWriteError:
 		log.Errorf("Failed to write JSONL file %s: %v", m.jsonlPath, msg.Error)
 		m.setStatusErrorMessage(fmt.Sprintf("Save failed: %v", msg.Error), true)
@@ -358,7 +358,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if filename == "" {
 			filename = m.jsonlPath
 		}
-		m.setStatusNeutralMessage(fmt.Sprintf("%s (%d rows)", filename, len(msg.Content)), false)
+		m.setStatusNeutralMessage(fmt.Sprintf("%s", filename), false)
 	}
 
 	if !skipTableUpdate && (m.state == tableView || m.state == detailView) {
@@ -388,7 +388,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.commandPanel.SetMeta(
 		m.table.TotalRows(),
 		m.table.FilteredRows(),
-		m.table.SelectedOriginalLine(),
+		m.table.SelectedFilteredPosition(),
 		m.table.MarkedCount(),
 		m.table.FilterQuery() != "",
 	)

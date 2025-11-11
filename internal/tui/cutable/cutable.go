@@ -22,6 +22,7 @@ type Model struct {
 	table           table.Model
 	columnQueries   []string
 	filterQuery     string
+	originalFilter  string // Store the original filter before applying marked-only filter
 	rawEntries      []editor.Entry
 	filteredEntries []editor.Entry
 	marked          map[int]struct{}
@@ -457,6 +458,11 @@ func (m *Model) GenerateMarkedOnlyFilter() string {
 		return ""
 	}
 	
+	// Store the current filter as original filter before applying marked-only
+	if !m.isMarkedOnlyFilter(m.filterQuery) {
+		m.originalFilter = m.filterQuery
+	}
+	
 	// Use a special filter format that we can recognize internally
 	return "__MARKED_ONLY__"
 }
@@ -467,6 +473,10 @@ func (m *Model) isMarkedOnlyFilter(filter string) bool {
 
 func (m *Model) IsCurrentFilterMarkedOnly() bool {
 	return m.isMarkedOnlyFilter(m.filterQuery)
+}
+
+func (m *Model) GetOriginalFilter() string {
+	return m.originalFilter
 }
 
 func (m *Model) SetColumnQueries(queries []string) {
@@ -506,6 +516,19 @@ func (m *Model) SelectedOriginalLine() int {
 	}
 
 	return m.filteredEntries[cursor].Line
+}
+
+func (m *Model) SelectedFilteredPosition() int {
+	if len(m.filteredEntries) == 0 {
+		return 0
+	}
+
+	cursor := m.table.Cursor()
+	if cursor < 0 || cursor >= len(m.filteredEntries) {
+		return 0
+	}
+
+	return cursor + 1 // 1-based position
 }
 
 func (m *Model) SelectedEntry() *editor.Entry {
