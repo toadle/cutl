@@ -19,6 +19,8 @@ builds:
     ignore:
       - goos: windows
         goarch: arm64
+    ldflags:
+      - -s -w -X cutl/internal/version.Version={{.Version}} -X cutl/internal/version.Commit={{.Commit}} -X cutl/internal/version.Date={{.Date}}
 
 archives:
   - format: tar.gz

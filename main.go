@@ -8,6 +8,7 @@ import (
 
 	"cutl/internal"
 	"cutl/internal/tui"
+	"cutl/internal/version"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/fang"
@@ -17,7 +18,7 @@ import (
 
 var cmd = &cobra.Command{
 	Use:     "cutl",
-	Version: "0.1.0",
+	Version: version.GetVersion(),
 	Short:   "A cozy tool to sift through and modify JSONL files.",
 	Long:    `The main use case is to quickly view and edit large JSONL files in the terminal. The main use-case in mind was the need to manage datasets for machine learning tasks.`,
 
@@ -68,6 +69,10 @@ func initDebugLog(debug bool) *os.File {
 func main() {
 	cmd.PersistentFlags().Bool("debug", false, "passing this flag will allow writing debug output to debug.log")
 	cmd.PersistentFlags().String("input", "", "Pfad zu einer JSONL-Datei, die beim Start geladen wird")
+	
+	// Custom version template to show full version info
+	cmd.SetVersionTemplate(fmt.Sprintf("%s\n", version.GetFullVersion()))
+	
 	if err := fang.Execute(context.Background(), cmd); err != nil {
 		os.Exit(1)
 	}

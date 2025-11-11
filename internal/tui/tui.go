@@ -7,6 +7,7 @@ import (
 	"cutl/internal/tui/commandpanel"
 	"cutl/internal/tui/cutable"
 	"cutl/internal/tui/styles"
+	"cutl/internal/version"
 	"encoding/json"
 	"fmt"
 	"path/filepath"
@@ -197,6 +198,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						return messages.SortByColumn{ColumnIndex: columnIndex}
 					}
 				}
+			case "v", "V":
+				skipTableUpdate = true
+				m.setStatusNeutralMessage(version.GetFullVersion(), true)
 			case "ctrl+c", "q":
 				return m, tea.Quit
 			}
@@ -302,6 +306,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						return messages.SortByColumn{ColumnIndex: columnIndex}
 					})
 				}
+			case "v", "V":
+				m.setStatusNeutralMessage(version.GetFullVersion(), true)
 			case "ctrl+c", "q":
 				return m, tea.Quit
 			}
