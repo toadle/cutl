@@ -1,5 +1,5 @@
 
-<img width="200" alt="53C8B79A-E6B6-4B9E-B275-23913333D816" src="https://github.com/user-attachments/assets/cd05cd74-c77a-45b9-b0de-bf142a05206a" />
+<img height="200" alt="cutl-logo" src="https://github.com/user-attachments/assets/e4c799fe-3993-4c3d-8f0e-ece573162816" />
 
 
 # cutl - Your friendly jq-based JSONL Dataset Editor
