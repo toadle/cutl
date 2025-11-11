@@ -43,7 +43,7 @@ For keyboard shortcuts, see in-app help.
 
 ## Contributing
 
-Pull requests are welcome. Please ensure new features include tests, follow Go code conventions, and update documentation as needed.
+Pull requests are welcome. The tool is heavily vibe-coded up to this point, so don't expect the finest of code.
 
 ## License
 
