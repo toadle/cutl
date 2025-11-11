@@ -9,6 +9,9 @@ It's goal is to be pleasant to use. The primary intended use-case is to work in 
 
 Most cutl operations—including filtering, column selection, and row manipulation—are powered by [jq](https://stedolan.github.io/jq/) selectors and syntax. Users familiar with jq will find expressive power for querying and editing structured data, and all filtering follows jq-compatible rules. For a primer, see the jq [manual](https://stedolan.github.io/jq/manual/).
 
+![CleanShot 2025-11-11 at 15 12 20](https://github.com/user-attachments/assets/4fd3a74a-0b87-421d-91ee-2b0e27728582)
+
+
 ## Features
 
 - Interactive table view for large JSONL files
