@@ -17,17 +17,19 @@ import (
 )
 
 type Model struct {
-	height          int
-	width           int
-	table           table.Model
-	columnQueries   []string
-	filterQuery     string
-	originalFilter  string // Store the original filter before applying marked-only filter
-	rawEntries      []editor.Entry
-	filteredEntries []editor.Entry
-	marked          map[int]struct{}
-	sortColumn      int
-	sortAscending   bool
+	height            int
+	width             int
+	table             table.Model
+	columnQueries     []string
+	filterQuery       string
+	originalFilter    string // Store the original filter before applying marked-only filter
+	rawEntries        []editor.Entry
+	filteredEntries   []editor.Entry
+	marked            map[int]struct{}
+	sortColumn        int
+	sortAscending     bool
+	columnWidths      []int
+	columnWidthsDirty bool
 }
 
 const (
@@ -45,11 +47,12 @@ func New() Model {
 	t.SetStyles(defaultStyles())
 
 	m := Model{
-		table:         t,
-		columnQueries: []string{}, // Initialisiere leeres Array
-		marked:        make(map[int]struct{}),
-		sortColumn:    -1,
-		sortAscending: true,
+		table:             t,
+		columnQueries:     []string{}, // Initialisiere leeres Array
+		marked:            make(map[int]struct{}),
+		sortColumn:        -1,
+		sortAscending:     true,
+		columnWidthsDirty: true,
 	}
 
 	return m
@@ -60,9 +63,10 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-		m.updateColumnWidths()
+		m.updateColumnWidths(true)
 	case messages.ColumnQueryChanged:
 		m.columnQueries = msg.Queries
+		m.columnWidthsDirty = true
 		m.rebuildTable()
 	case messages.FilterQueryChanged:
 		m.filterQuery = msg.Query
@@ -85,6 +89,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		if len(m.columnQueries) == 0 && len(m.rawEntries) > 0 {
 			if first, ok := m.rawEntries[0].Data.(map[string]interface{}); ok {
 				m.columnQueries = discoverInitialColumnQueries(first)
+				m.columnWidthsDirty = true
 				log.Debugf("Auto-discovered columns: %v", m.columnQueries)
 			}
 		} else {
@@ -245,7 +250,8 @@ func (m *Model) rebuildTableInternalWithErrorCheck(preserveSelection bool) error
 
 	m.table.SetColumns(columns)
 	m.table.SetRows(rows)
-	m.updateColumnWidths()
+	m.updateColumnWidths(m.columnWidthsDirty)
+	m.columnWidthsDirty = false
 
 	if cursorPos >= 0 && cursorPos < len(rows) {
 		m.table.SetCursor(cursorPos)
@@ -396,7 +402,8 @@ func (m *Model) rebuildTableInternal(preserveSelection bool) {
 	} else if !preserveSelection {
 		m.table.SetCursor(0)
 	}
-	m.updateColumnWidths()
+	m.updateColumnWidths(m.columnWidthsDirty)
+	m.columnWidthsDirty = false
 }
 
 func (m *Model) markerSymbol(line int) string {
@@ -482,6 +489,7 @@ func (m *Model) GetOriginalFilter() string {
 func (m *Model) SetColumnQueries(queries []string) {
 	m.columnQueries = queries
 	log.Debugf("Set column queries: %v", queries)
+	m.columnWidthsDirty = true
 }
 
 func (m *Model) MarkAllVisible() int {
@@ -677,8 +685,8 @@ func (m *Model) SetHeight(height int) {
 	m.table.SetHeight(height)
 }
 
-func (m *Model) updateColumnWidths() {
-	if m.width == 0 || len(m.table.Rows()) == 0 {
+func (m *Model) updateColumnWidths(recalculate bool) {
+	if m.width == 0 {
 		return
 	}
 
@@ -686,6 +694,14 @@ func (m *Model) updateColumnWidths() {
 	rows := m.table.Rows()
 	numColumns := len(columns)
 	if numColumns == 0 {
+		return
+	}
+
+	if !recalculate && len(m.columnWidths) == numColumns {
+		for i := range columns {
+			columns[i].Width = m.columnWidths[i]
+		}
+		m.table.SetColumns(columns)
 		return
 	}
 
@@ -797,6 +813,8 @@ func (m *Model) updateColumnWidths() {
 		columns[idx].Width = widths[idx]
 	}
 
+	m.columnWidths = make([]int, len(widths))
+	copy(m.columnWidths, widths)
 	m.table.SetColumns(columns)
 }
 
