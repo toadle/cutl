@@ -36,12 +36,12 @@ func WriteJSONL(filePath string, entries []Entry) error {
 		}
 	}
 
-	if err := writer.Flush(); err != nil {
+	if err = writer.Flush(); err != nil {
 		log.Error("Failed to flush JSONL writer:", "error", err)
 		return err
 	}
 
-	log.Infof("Erfolgreich %d JSON-Objekte in %s geschrieben.", len(entries), filePath)
+	log.Debugf("Erfolgreich %d JSON-Objekte in %s geschrieben.", len(entries), filePath)
 
 	return nil
 }

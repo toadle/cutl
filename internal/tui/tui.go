@@ -93,7 +93,7 @@ func (m *Model) Init() tea.Cmd {
 				Error: err,
 			}
 		} else {
-			log.Infof("JSONL file %s loaded successfully.", m.jsonlPath)
+			log.Debugf("JSONL file %s loaded successfully.", m.jsonlPath)
 			return messages.InputFileLoaded{
 				Content: jsonlContent,
 			}
@@ -174,7 +174,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				skipTableUpdate = true
 				removed := m.table.DeleteMarkedOrSelected()
 				if removed > 0 {
-					log.Infof("Deleted %d entries", removed)
+					log.Debugf("Deleted %d entries", removed)
 				}
 			case "w", "W":
 				skipTableUpdate = true
@@ -281,7 +281,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "x", "X":
 				removed := m.table.DeleteMarkedOrSelected()
 				if removed > 0 {
-					log.Infof("Deleted %d entries", removed)
+					log.Debugf("Deleted %d entries", removed)
 					if m.table.FilteredRows() == 0 {
 						m.state = tableView
 						m.detailViewport.SetContent("")
@@ -337,7 +337,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 	case messages.InputFileWritten:
-		log.Infof("Saved %d entries to %s", msg.Count, msg.Path)
+		log.Debugf("Saved %d entries to %s", msg.Count, msg.Path)
 		filename := filepath.Base(msg.Path)
 		if filename == "" {
 			filename = msg.Path

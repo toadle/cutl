@@ -62,6 +62,10 @@ func initDebugLog(debug bool) *os.File {
 			loggerFile, _ = tea.LogToFile("debug.log", "debug")
 			fmt.Println("Failed setting up logging", fileErr)
 		}
+	} else {
+		// Disable logging entirely when not in debug mode
+		log.SetLevel(log.FatalLevel) // Only show fatal errors
+		log.SetOutput(os.Stderr)     // Ensure output goes to stderr, not stdout
 	}
 	return loggerFile
 }
