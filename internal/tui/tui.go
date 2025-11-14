@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -47,6 +48,11 @@ type Model struct {
 	statusMessage           string
 	clearStatusOnNextAction bool
 
+	// Loading states
+	spinner     spinner.Model
+	loading     bool
+	loadingText string
+
 	// Edit view fields
 	editInputs      []textinput.Model
 	editSingleMode  bool
@@ -64,12 +70,20 @@ func New(jsonlPath string) *Model {
 		cfg = &config.Config{Files: make(map[string]config.FileConfig)}
 	}
 
+	// Initialize spinner
+	s := spinner.New()
+	s.Spinner = spinner.Dot
+	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
+
 	m := &Model{
 		table:        cutable.New(),
 		commandPanel: commandpanel.New(),
 		jsonlPath:    jsonlPath,
 		state:        tableView,
 		config:       cfg,
+		spinner:      s,
+		loading:      true,
+		loadingText:  "Loading file...",
 	}
 
 	m.detailViewport = viewport.New(0, 0)
@@ -78,33 +92,46 @@ func New(jsonlPath string) *Model {
 }
 
 func (m *Model) Init() tea.Cmd {
-	return func() tea.Msg {
-		// Try to load saved column configuration for this file
-		if fileConfig, exists := m.config.GetFileConfig(m.jsonlPath); exists && len(fileConfig.Columns) > 0 {
-			log.Debugf("Loaded saved columns for %s: %v", m.jsonlPath, fileConfig.Columns)
-			m.table.SetColumnQueries(fileConfig.Columns)
-		}
-
-		jsonlContent, err := editor.LoadJSONL(m.jsonlPath)
-
-		if err != nil {
-			log.Errorf("Failed to load JSONL file %s: %v", m.jsonlPath, err)
-			return messages.InputFileLoadError{
-				Error: err,
+	// Start loading when initializing
+	m.loading = true
+	m.loadingText = "Loading file..."
+	
+	return tea.Batch(
+		m.spinner.Tick,
+		func() tea.Msg {
+			// Try to load saved column configuration for this file
+			if fileConfig, exists := m.config.GetFileConfig(m.jsonlPath); exists && len(fileConfig.Columns) > 0 {
+				log.Debugf("Loaded saved columns for %s: %v", m.jsonlPath, fileConfig.Columns)
+				m.table.SetColumnQueries(fileConfig.Columns)
 			}
-		} else {
-			log.Debugf("JSONL file %s loaded successfully.", m.jsonlPath)
-			return messages.InputFileLoaded{
-				Content: jsonlContent,
+
+			jsonlContent, err := editor.LoadJSONL(m.jsonlPath)
+
+			if err != nil {
+				log.Errorf("Failed to load JSONL file %s: %v", m.jsonlPath, err)
+				return messages.InputFileLoadError{
+					Error: err,
+				}
+			} else {
+				log.Debugf("JSONL file %s loaded successfully.", m.jsonlPath)
+				return messages.InputFileLoaded{
+					Content: jsonlContent,
+				}
 			}
-		}
-	}
+		},
+	)
 }
 
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	cmds := []tea.Cmd{}
 	skipTableUpdate := false
+
+	// Always update spinner if we're loading
+	if m.loading {
+		m.spinner, cmd = m.spinner.Update(msg)
+		cmds = append(cmds, cmd)
+	}
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
@@ -346,6 +373,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case messages.InputFileWriteError:
 		log.Errorf("Failed to write JSONL file %s: %v", m.jsonlPath, msg.Error)
 		m.setStatusErrorMessage(fmt.Sprintf("Save failed: %v", msg.Error), true)
+	case messages.InputFileLoadError:
+		log.Errorf("Failed to load input file: %v", msg.Error)
+		m.setStatusErrorMessage(fmt.Sprintf("Load failed: %v", msg.Error), true)
+		// Stop loading spinner on file load error
+		m.loading = false
 	case messages.EditApplied:
 		log.Debugf("EditApplied message received")
 		if msg.SingleMode {
@@ -359,17 +391,32 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case messages.FilterQueryError:
 		log.Errorf("Filter query error: %v", msg.Error)
 		m.setStatusErrorMessage(fmt.Sprintf("%v", msg.Error), true)
+		// Stop loading spinner on filter error
+		m.loading = false
+	case messages.FilterQueryChanged:
+		// Start loading spinner for filter operations
+		m.loading = true
+		m.loadingText = "Filtering..."
+		// Continue with normal message processing - the table will handle the filter
+		// and we'll stop the spinner after the table update is complete
 	case messages.InputFileLoaded:
 		filename := filepath.Base(m.jsonlPath)
 		if filename == "" {
 			filename = m.jsonlPath
 		}
 		m.setStatusNeutralMessage(fmt.Sprintf("%s", filename), false)
+		// Stop loading spinner when file is loaded
+		m.loading = false
 	}
 
 	if !skipTableUpdate && (m.state == tableView || m.state == detailView) {
 		m.table, cmd = m.table.Update(msg)
 		cmds = append(cmds, cmd)
+		
+		// Stop loading spinner after filter operations complete
+		if _, ok := msg.(messages.FilterQueryChanged); ok {
+			m.loading = false
+		}
 	}
 
 	if m.state == editView {
@@ -433,7 +480,16 @@ func (m *Model) View() string {
 	}
 	m.detailViewport.Height = viewportHeight
 
-	if m.state == detailView {
+	if m.loading {
+		// Show loading spinner with message
+		loadingView := lipgloss.NewStyle().
+			Height(tableHeight).
+			Width(m.width-8).
+			AlignHorizontal(lipgloss.Center).
+			AlignVertical(lipgloss.Center).
+			Render(fmt.Sprintf("%s %s", m.spinner.View(), m.loadingText))
+		sections = append(sections, loadingView)
+	} else if m.state == detailView {
 		sections = append(sections, m.renderDetailView())
 	} else if m.state == editView {
 		sections = append(sections, m.renderEditView())
