@@ -165,7 +165,7 @@ func (m *Model) rebuildTableInternalWithErrorCheck(preserveSelection bool) error
 				log.Errorf("Error parsing filter query '%s': %v", filterStr, err)
 				return fmt.Errorf("filter query parse error: %v", err)
 			}
-			
+
 			var (
 				filtered []editor.Entry
 			)
@@ -457,12 +457,12 @@ func (m *Model) GenerateMarkedOnlyFilter() string {
 	if len(m.marked) == 0 {
 		return ""
 	}
-	
+
 	// Store the current filter as original filter before applying marked-only
 	if !m.isMarkedOnlyFilter(m.filterQuery) {
 		m.originalFilter = m.filterQuery
 	}
-	
+
 	// Use a special filter format that we can recognize internally
 	return "__MARKED_ONLY__"
 }
@@ -498,10 +498,10 @@ func (m *Model) MarkAllVisible() int {
 	}
 
 	log.Debugf("Marked %d visible entries out of %d total filtered entries", markedCount, len(m.filteredEntries))
-	
+
 	// Rebuild table to show the markers
 	m.rebuildTable()
-	
+
 	return markedCount
 }
 
@@ -542,6 +542,16 @@ func (m *Model) SelectedEntry() *editor.Entry {
 	}
 
 	return &m.filteredEntries[cursor]
+}
+
+func (m *Model) FirstEntry() *editor.Entry {
+	if len(m.filteredEntries) > 0 {
+		return &m.filteredEntries[0]
+	}
+	if len(m.rawEntries) > 0 {
+		return &m.rawEntries[0]
+	}
+	return nil
 }
 
 func (m *Model) ToggleMarkSelected() {
@@ -901,7 +911,7 @@ func parseNumber(s string) (float64, error) {
 
 func (m *Model) UpdateEntries(targetLines []int, values map[string]string, singleMode bool) error {
 	updatedCount := 0
-	
+
 	if singleMode && len(targetLines) == 1 {
 		// Update single entry
 		targetLine := targetLines[0]
@@ -1035,5 +1045,5 @@ func (m *Model) setValueAtPath(data map[string]interface{}, path, value string) 
 func (m *Model) looksLikeJSON(value string) bool {
 	value = strings.TrimSpace(value)
 	return (strings.HasPrefix(value, "[") && strings.HasSuffix(value, "]")) ||
-		   (strings.HasPrefix(value, "{") && strings.HasSuffix(value, "}"))
+		(strings.HasPrefix(value, "{") && strings.HasSuffix(value, "}"))
 }

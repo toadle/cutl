@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"context"
+	"cutl/internal/ai"
 	"cutl/internal/config"
 	"cutl/internal/editor"
 	"cutl/internal/messages"
@@ -9,6 +11,7 @@ import (
 	"cutl/internal/tui/styles"
 	"cutl/internal/version"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -28,6 +31,7 @@ const (
 	tableView viewState = iota
 	columnInputView
 	filterInputView
+	promptInputView
 	detailView
 	editView
 )
@@ -60,6 +64,10 @@ type Model struct {
 
 	// Configuration
 	config *config.Config
+
+	// AI assistance
+	aiClient     *ai.Client
+	lastAIPrompt string
 }
 
 func New(jsonlPath string) *Model {
@@ -86,6 +94,13 @@ func New(jsonlPath string) *Model {
 		loadingText:  "Loading file...",
 	}
 
+	if client, err := ai.NewFromEnv(); err == nil {
+		m.aiClient = client
+		m.commandPanel.SetAIAssistantEnabled(true)
+	} else if !errors.Is(err, ai.ErrMissingAPIKey) {
+		log.Warnf("AI assistant disabled: %v", err)
+	}
+
 	m.detailViewport = viewport.New(0, 0)
 
 	return m
@@ -95,7 +110,7 @@ func (m *Model) Init() tea.Cmd {
 	// Start loading when initializing
 	m.loading = true
 	m.loadingText = "Loading file..."
-	
+
 	return tea.Batch(
 		m.spinner.Tick,
 		func() tea.Msg {
@@ -161,11 +176,20 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch key {
 			case "c":
 				m.state = columnInputView
-				m.commandPanel.Activate(m.table.ColumnQueries())
+				m.commandPanel.ActivateColumns(m.table.ColumnQueries())
 				return m, nil
 			case "f":
 				m.state = filterInputView
-				m.commandPanel.Activate([]string{m.table.FilterQuery()})
+				m.commandPanel.ActivateFilter(m.table.FilterQuery())
+				return m, nil
+			case "p", "P":
+				if m.aiClient == nil {
+					m.setStatusErrorMessage("AI filter unavailable (set OPENAI_API_KEY)", true)
+					return m, nil
+				}
+				m.state = promptInputView
+				m.commandPanel.ActivatePrompt(m.lastAIPrompt)
+				m.commandPanel.SetPromptLoading(false)
 				return m, nil
 			case "d", "D":
 				if entry := m.table.SelectedEntry(); entry != nil {
@@ -277,6 +301,37 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						Query: sanitizedQuery,
 					}
 				}
+			}
+		case promptInputView:
+			switch key {
+			case "esc":
+				if m.commandPanel.PromptLoading() {
+					break
+				}
+				m.state = tableView
+				m.commandPanel.Deactivate()
+				m.commandPanel.SetStatus("")
+			case "enter":
+				if m.commandPanel.PromptLoading() {
+					break
+				}
+				rawPrompt := m.commandPanel.Value()
+				sanitizedPrompt := strings.ReplaceAll(rawPrompt, " ", " ")
+				sanitizedPrompt = strings.TrimSpace(sanitizedPrompt)
+				if sanitizedPrompt == "" {
+					m.setStatusErrorMessage("Prompt cannot be empty", true)
+					break
+				}
+				cmd, err := m.buildAssistantFilterCmd(sanitizedPrompt)
+				if err != nil {
+					m.setStatusErrorMessage(err.Error(), true)
+					break
+				}
+				m.lastAIPrompt = sanitizedPrompt
+				if tick := m.commandPanel.SetPromptLoading(true); tick != nil {
+					cmds = append(cmds, tick)
+				}
+				cmds = append(cmds, cmd)
 			}
 		case detailView:
 			skipTableUpdate = true
@@ -393,6 +448,27 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.setStatusErrorMessage(fmt.Sprintf("%v", msg.Error), true)
 		// Stop loading spinner on filter error
 		m.loading = false
+	case messages.FilterPromptResult:
+		m.loading = false
+		m.commandPanel.SetPromptLoading(false)
+		if m.state == promptInputView {
+			m.commandPanel.Deactivate()
+			m.commandPanel.SetStatus("")
+			m.state = tableView
+		}
+		if msg.Error != nil {
+			m.setStatusErrorMessage(fmt.Sprintf("Assistant failed: %v", msg.Error), true)
+			break
+		}
+		query := strings.TrimSpace(msg.Query)
+		if query == "" {
+			m.setStatusErrorMessage("Assistant returned an empty query", true)
+			break
+		}
+		m.setStatusMessage("Assistant filter applied", true)
+		cmds = append(cmds, func() tea.Msg {
+			return messages.FilterQueryChanged{Query: query}
+		})
 	case messages.FilterQueryChanged:
 		// Start loading spinner for filter operations
 		m.loading = true
@@ -412,7 +488,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if !skipTableUpdate && (m.state == tableView || m.state == detailView) {
 		m.table, cmd = m.table.Update(msg)
 		cmds = append(cmds, cmd)
-		
+
 		// Stop loading spinner after filter operations complete
 		if _, ok := msg.(messages.FilterQueryChanged); ok {
 			m.loading = false
@@ -484,7 +560,7 @@ func (m *Model) View() string {
 		// Show loading spinner with message
 		loadingView := lipgloss.NewStyle().
 			Height(tableHeight).
-			Width(m.width-8).
+			Width(m.width - 8).
 			AlignHorizontal(lipgloss.Center).
 			AlignVertical(lipgloss.Center).
 			Render(fmt.Sprintf("%s %s", m.spinner.View(), m.loadingText))
@@ -520,6 +596,75 @@ func (m *Model) renderDetailView() string {
 	viewportView := m.detailViewport.View()
 
 	return detailStyle.Render(lipgloss.JoinVertical(lipgloss.Left, info, "", viewportView))
+}
+
+func (m *Model) buildAssistantFilterCmd(prompt string) (tea.Cmd, error) {
+	if m.aiClient == nil {
+		return nil, errors.New("AI assistant unavailable")
+	}
+
+	sample := m.table.SelectedEntry()
+	if sample == nil {
+		sample = m.table.FirstEntry()
+	}
+	if sample == nil {
+		return nil, errors.New("No entries available for the assistant context")
+	}
+
+	sampleJSON, err := buildAnonymizedSampleJSON(sample.Data)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to prepare sample entry: %w", err)
+	}
+
+	req := ai.FilterRequest{
+		Prompt:      prompt,
+		SampleJSON:  sampleJSON,
+		ColumnHints: append([]string{}, m.table.ColumnQueries()...),
+	}
+
+	return func() tea.Msg {
+		query, err := m.aiClient.GenerateFilterQuery(context.Background(), req)
+		if err != nil {
+			return messages.FilterPromptResult{Error: err}
+		}
+		return messages.FilterPromptResult{Query: query}
+	}, nil
+}
+
+func buildAnonymizedSampleJSON(data any) (string, error) {
+	sanitized := anonymizeValue(data)
+	bytes, err := json.MarshalIndent(sanitized, "", "  ")
+	if err != nil {
+		return "", err
+	}
+	return string(bytes), nil
+}
+
+func anonymizeValue(value any) any {
+	switch v := value.(type) {
+	case map[string]interface{}:
+		clone := make(map[string]interface{}, len(v))
+		for key, val := range v {
+			clone[key] = anonymizeValue(val)
+		}
+		return clone
+	case []interface{}:
+		clone := make([]interface{}, len(v))
+		for i, val := range v {
+			clone[i] = anonymizeValue(val)
+		}
+		return clone
+	case string:
+		return "abc"
+	case float64, float32, int, int64, int32, uint, uint64, uint32, json.Number:
+		return 123
+	case bool:
+		return true
+	case nil:
+		return nil
+	default:
+		return "abc"
+	}
 }
 
 func (m *Model) updateDetailContent(entry *editor.Entry, reset bool) {
@@ -757,7 +902,7 @@ func (m *Model) applyEdits() tea.Cmd {
 			}
 		}
 
-		log.Debugf("applyEdits: Calling UpdateEntries with %d target lines, %d values, singleMode=%t", 
+		log.Debugf("applyEdits: Calling UpdateEntries with %d target lines, %d values, singleMode=%t",
 			len(m.editTargetLines), len(values), m.editSingleMode)
 
 		// Apply changes to the table data

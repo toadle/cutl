@@ -5,23 +5,36 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/spinner"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
+type inputMode int
+
+const (
+	modeColumns inputMode = iota
+	modeFilter
+	modePrompt
+)
+
 type Model struct {
-	width         int
-	textInput     textinput.Model
-	active        bool
-	totalRows     int
-	filteredRows  int
-	currentLine   int
-	filterActive  bool
-	markedCount   int
-	statusMessage string
-	isStatusError bool
+	width           int
+	textInput       textinput.Model
+	active          bool
+	totalRows       int
+	filteredRows    int
+	currentLine     int
+	filterActive    bool
+	markedCount     int
+	statusMessage   string
+	isStatusError   bool
 	isStatusNeutral bool
+	inputMode       inputMode
+	aiEnabled       bool
+	promptLoading   bool
+	promptSpinner   spinner.Model
 }
 
 func (m *Model) Init() tea.Cmd {
@@ -34,22 +47,69 @@ func New() Model {
 	ti.CharLimit = 156
 	ti.Width = 50
 
+	sp := spinner.New()
+	sp.Spinner = spinner.Dot
+	sp.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
+
 	m := Model{
-		textInput: ti,
-		active:    false,
+		textInput:     ti,
+		active:        false,
+		inputMode:     modeColumns,
+		promptSpinner: sp,
 	}
 	return m
 }
 
-func (m *Model) Activate(queries []string) {
+func (m *Model) activateWithMode(mode inputMode, value string, placeholder string, limit int) {
 	m.active = true
-	m.textInput.SetValue(strings.Join(queries, ", "))
+	m.inputMode = mode
+	if placeholder != "" {
+		m.textInput.Placeholder = placeholder
+	}
+	if limit > 0 {
+		m.textInput.CharLimit = limit
+	}
+	m.textInput.SetValue(value)
+	m.textInput.CursorEnd()
 	m.textInput.Focus()
+}
+
+func (m *Model) ActivateColumns(queries []string) {
+	m.activateWithMode(modeColumns, strings.Join(queries, ", "), "id, title, ...", 156)
+}
+
+func (m *Model) ActivateFilter(filter string) {
+	m.activateWithMode(modeFilter, filter, "jq filter, e.g. .field == \"value\"", 200)
+}
+
+func (m *Model) ActivatePrompt(initial string) {
+	if !m.aiEnabled {
+		return
+	}
+	m.promptLoading = false
+	m.activateWithMode(modePrompt, initial, "Describe what to filter (AI)", 400)
 }
 
 func (m *Model) Deactivate() {
 	m.active = false
 	m.textInput.Blur()
+	m.promptLoading = false
+}
+
+func (m *Model) SetAIAssistantEnabled(enabled bool) {
+	m.aiEnabled = enabled
+}
+
+func (m *Model) PromptLoading() bool {
+	return m.promptLoading
+}
+
+func (m *Model) SetPromptLoading(active bool) tea.Cmd {
+	m.promptLoading = active
+	if active {
+		return m.promptSpinner.Tick
+	}
+	return nil
 }
 
 func (m *Model) Value() string {
@@ -84,16 +144,23 @@ func (m *Model) SetStatusNeutral(message string) {
 
 func (m *Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	var cmd tea.Cmd
+	var cmds []tea.Cmd
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 	}
 
-	if m.active {
+	if m.active && !m.promptLoading {
 		m.textInput, cmd = m.textInput.Update(msg)
+		cmds = append(cmds, cmd)
 	}
 
-	return *m, cmd
+	if m.promptLoading {
+		m.promptSpinner, cmd = m.promptSpinner.Update(msg)
+		cmds = append(cmds, cmd)
+	}
+
+	return *m, tea.Batch(cmds...)
 }
 
 func (m *Model) View() string {
@@ -102,6 +169,14 @@ func (m *Model) View() string {
 
 	if m.active {
 		left := m.textInput.View()
+		if m.inputMode == modePrompt && m.promptLoading {
+			loadingLabel := lipgloss.JoinHorizontal(
+				lipgloss.Top,
+				styles.CommandLabelTrigger.Render(m.promptSpinner.View()),
+				styles.CommandLabel.Render(" Asking assistant..."),
+			)
+			left = loadingLabel
+		}
 		if selectionInfo != "" {
 			left = lipgloss.JoinHorizontal(lipgloss.Top, left, selectionInfo)
 		}
@@ -123,6 +198,13 @@ func (m *Model) View() string {
 		styles.CommandLabelTrigger.Render("M "),
 		styles.CommandLabel.Render("Filter Marked"),
 	))
+	if m.aiEnabled {
+		sections = append(sections, lipgloss.JoinHorizontal(
+			lipgloss.Top,
+			styles.CommandLabelTrigger.Render("P "),
+			styles.CommandLabel.Render("AI Filter"),
+		))
+	}
 	sections = append(sections, lipgloss.JoinHorizontal(
 		lipgloss.Top,
 		styles.CommandLabelTrigger.Render("Ctrl+A "),
@@ -162,7 +244,7 @@ func (m *Model) metaContent() string {
 	if total == 0 {
 		total = m.totalRows
 	}
-	
+
 	if m.currentLine > 0 {
 		current = fmt.Sprintf("%d", m.currentLine)
 	}

@@ -15,6 +15,11 @@ type FilterQueryError struct {
 	Query string
 }
 
+type FilterPromptResult struct {
+	Query string
+	Error error
+}
+
 type InputFileLoaded struct {
 	Content []editor.Entry
 }

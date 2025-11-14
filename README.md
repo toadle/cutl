@@ -17,6 +17,7 @@ Most cutl operations—including filtering, column selection, and row manipulati
 
 - Interactive table view for large JSONL files
 - Live filtering and JQ-style queries
+- Optional AI-assisted filter prompts (requires `OPENAI_API_KEY`)
 - Easy field/row editing, supports multi-line edit
 - Keyboard-friendly navigation (vim- and arrow keys)
 - Batch delete, mark/clear, save back to file
@@ -40,6 +41,19 @@ go build -o cutl
 ```
 
 For keyboard shortcuts, see in-app help.
+
+## AI-assisted filtering
+
+If you export `OPENAI_API_KEY`, cutl unlocks an “AI Filter” prompt that can turn natural language instructions into jq filters:
+
+```bash
+export OPENAI_API_KEY=sk-your-key
+# Optional overrides
+export CUTL_OPENAI_MODEL=gpt-4.1-mini
+export OPENAI_BASE_URL=https://api.openai.com/v1
+```
+
+While viewing the table, press `P` to open the AI prompt. Describe what you want to filter (e.g. “rows where language is German and score > 0.8”) and press `Enter`. The currently selected row is sent as context so the model understands your data structure. The assistant responds with a jq expression that is immediately applied as the active filter. If no API key is available, the shortcut is hidden and the regular filtering workflow stays unchanged.
 
 ## Contributing
 
