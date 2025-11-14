@@ -35,6 +35,19 @@ var cmd = &cobra.Command{
 			os.Exit(1)
 		}
 
+		// Check if the input file exists and is not a directory
+		fileInfo, err := os.Stat(inputPath)
+		if os.IsNotExist(err) {
+			fmt.Printf("Error: File '%s' does not exist.\n", inputPath)
+			os.Exit(1)
+		} else if err != nil {
+			fmt.Printf("Error: Cannot access file '%s': %v\n", inputPath, err)
+			os.Exit(1)
+		} else if fileInfo.IsDir() {
+			fmt.Printf("Error: '%s' is a directory, not a file.\n", inputPath)
+			os.Exit(1)
+		}
+
 		var ui *tui.Model = tui.New(inputPath)
 		p := tea.NewProgram(ui, tea.WithAltScreen())
 		internal.InitMessageRelay(p.Send)
