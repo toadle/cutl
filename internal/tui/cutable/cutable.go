@@ -5,6 +5,7 @@ import (
 	"cutl/internal/messages"
 	"encoding/json"
 	"fmt"
+	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -70,7 +71,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.rebuildTable()
 	case messages.FilterQueryChanged:
 		m.filterQuery = msg.Query
-		if cmd := m.rebuildTableWithFilterCheck(); cmd != nil {
+		if cmd := m.rebuildTableWithFilterCheck(false); cmd != nil {
 			return m, cmd
 		}
 	case messages.SortByColumn:
@@ -111,8 +112,8 @@ func (m *Model) rebuildTableWithSort() {
 	m.rebuildTableInternal(false)
 }
 
-func (m *Model) rebuildTableWithFilterCheck() tea.Cmd {
-	err := m.rebuildTableInternalWithErrorCheck(true)
+func (m *Model) rebuildTableWithFilterCheck(preserveSelection bool) tea.Cmd {
+	err := m.rebuildTableInternalWithErrorCheck(preserveSelection)
 	if err != nil {
 		return func() tea.Msg {
 			return messages.FilterQueryError{
@@ -227,7 +228,7 @@ func (m *Model) rebuildTableInternalWithErrorCheck(preserveSelection bool) error
 			var colValue string
 			switch v := v.(type) {
 			case float64:
-				colValue = fmt.Sprintf("%.0f", v)
+				colValue = formatFloatValue(v)
 			case []interface{}, map[string]interface{}:
 				// For arrays and objects, display as JSON string
 				if jsonBytes, err := json.Marshal(v); err == nil {
@@ -255,6 +256,8 @@ func (m *Model) rebuildTableInternalWithErrorCheck(preserveSelection bool) error
 
 	if cursorPos >= 0 && cursorPos < len(rows) {
 		m.table.SetCursor(cursorPos)
+	} else if !preserveSelection {
+		m.table.SetCursor(0)
 	}
 
 	return nil
@@ -367,7 +370,7 @@ func (m *Model) rebuildTableInternal(preserveSelection bool) {
 			} else {
 				switch v := v.(type) {
 				case float64:
-					val = fmt.Sprintf("%.0f", v)
+					val = formatFloatValue(v)
 				case []interface{}, map[string]interface{}:
 					// For arrays and objects, display as JSON string
 					if jsonBytes, err := json.Marshal(v); err == nil {
@@ -1064,4 +1067,22 @@ func (m *Model) looksLikeJSON(value string) bool {
 	value = strings.TrimSpace(value)
 	return (strings.HasPrefix(value, "[") && strings.HasSuffix(value, "]")) ||
 		(strings.HasPrefix(value, "{") && strings.HasSuffix(value, "}"))
+}
+
+func formatFloatValue(value float64) string {
+	if math.IsNaN(value) || math.IsInf(value, 0) {
+		return fmt.Sprintf("%v", value)
+	}
+
+	if isWholeNumber(value) {
+		return strconv.FormatInt(int64(math.Round(value)), 10)
+	}
+
+	rounded := math.Round(value*1000) / 1000
+	return strconv.FormatFloat(rounded, 'f', 3, 64)
+}
+
+func isWholeNumber(value float64) bool {
+	const epsilon = 1e-9
+	return math.Abs(value-math.Round(value)) < epsilon
 }
